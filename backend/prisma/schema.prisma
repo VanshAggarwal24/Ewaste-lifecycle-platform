@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Role {
+  id          Int    @id @default(autoincrement())
+  name        String @unique
+  description String?
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  role_id        Int
+  email          String   @unique
+  password_hash  String
+  name           String
+  phone          String?
+  latitude       Float?   // Registered/home/service location for assignment, not live GPS
+  longitude      Float?   // Registered/home/service location for assignment, not live GPS
+  active         Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  role           Role     @relation(fields: [role_id], references: [id], onDelete: Restrict)
+  agent_profile  CollectionAgentProfile?
+  staff_profile  CenterStaffProfile?
+
+  ewaste_items       EwasteItem[]
+  pickup_requests    PickupRequest[]  @relation("UserRequests")
+  assigned_pickups   PickupRequest[]  @relation("AgentPickups")
+  inspections        Inspection[]
+  processing_batches ProcessingBatch[]
+  status_histories   StatusHistory[]
+  audit_logs         AuditLog[]
+  notifications      Notification[]
+
+  @@map("users")
+}
+
+model CollectionCenter {
+  id              String   @id @default(uuid())
+  name            String
+  address         String
+  latitude        Float
+  longitude       Float
+  capacity_kg     Float
+  current_load_kg Float    @default(0) // Increases on received pickup, decreases on batch process
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now())
+
+  staff_profiles     CenterStaffProfile[]
+  pickup_requests    PickupRequest[]
+  processing_batches ProcessingBatch[]
+
+  @@map("collection_centers")
+}
+
+model CollectionAgentProfile {
+  user_id          String @id
+  current_load_kg  Float  @default(0) // Increases when accepting pickup, decreases when dropped at center
+  max_load_kg      Float  // Used for workload score in smart assignment
+  available_status Boolean @default(true)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("collection_agent_profiles")
+}
+
+model CenterStaffProfile {
+  user_id   String @id
+  center_id String
+
+  user   User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  center CollectionCenter @relation(fields: [center_id], references: [id], onDelete: Cascade)
+
+  @@map("center_staff_profiles")
+}
+
+model EwasteCategory {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  description String?
+  items       EwasteItem[]
+
+  @@map("ewaste_categories")
+}
+
+enum ItemStatus {
+  SUBMITTED
+  PICKUP_REQUESTED
+  PICKUP_ASSIGNED
+  COLLECTED
+  RECEIVED_AT_CENTER
+  INSPECTED
+  PROCESSING
+  RECYCLED
+  REFURBISHED
+  DISPOSED
+  CANCELLED
+}
+
+model PickupRequest {
+  id           String    @id @default(uuid())
+  user_id      String
+  agent_id     String?
+  center_id    String
+  scheduled_at DateTime?
+  assigned_at  DateTime?
+  accepted_at  DateTime?
+  collected_at DateTime?
+  completed_at DateTime?
+  status       ItemStatus
+  latitude     Float?
+  longitude    Float?
+  created_at   DateTime  @default(now())
+
+  user   User              @relation("UserRequests", fields: [user_id], references: [id], onDelete: Restrict)
+  agent  User?             @relation("AgentPickups", fields: [agent_id], references: [id], onDelete: SetNull)
+  center CollectionCenter  @relation(fields: [center_id], references: [id], onDelete: Restrict)
+  items  EwasteItem[]
+
+  @@map("pickup_requests")
+}
+
+model EwasteItem {
+  id                  String     @id @default(uuid())
+  user_id             String
+  category_id         Int
+  pickup_request_id   String?
+  estimated_weight_kg Float
+  actual_weight_kg    Float?
+  condition           String?
+  status              ItemStatus @default(SUBMITTED)
+  submitted_at        DateTime   @default(now())
+  created_at          DateTime   @default(now())
+
+  user           User             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  category       EwasteCategory   @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  pickup_request PickupRequest?   @relation(fields: [pickup_request_id], references: [id], onDelete: SetNull)
+  
+  status_histories       StatusHistory[]
+  inspection             Inspection?
+  processing_batch_items ProcessingBatchItem[]
+
+  @@map("ewaste_items")
+}
+
+model StatusHistory {
+  id         String   @id @default(uuid())
+  item_id    String
+  old_status String?
+  new_status String
+  changed_by String
+  remarks    String?
+  created_at DateTime @default(now())
+
+  item EwasteItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [changed_by], references: [id], onDelete: Restrict)
+
+  @@map("status_histories")
+}
+
+enum ItemClassification {
+  REUSABLE
+  REFURBISHABLE
+  RECYCLABLE
+  DISPOSABLE
+}
+
+model Inspection {
+  id                              String              @id @default(uuid())
+  item_id                         String              @unique
+  inspector_id                    String
+  physical_condition              String?
+  functional_status               Boolean?
+  classification                  ItemClassification?
+  estimated_recoverable_weight_kg Float?
+  hazardous_components            String?
+  notes                           String?
+  inspected_at                    DateTime            @default(now())
+
+  item      EwasteItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  inspector User       @relation(fields: [inspector_id], references: [id], onDelete: Restrict)
+
+  @@map("inspections")
+}
+
+enum BatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+}
+
+model ProcessingBatch {
+  id           String      @id @default(uuid())
+  center_id    String
+  recycler_id  String
+  status       BatchStatus @default(PENDING)
+  sent_at      DateTime?
+  received_at  DateTime?
+  completed_at DateTime?
+  created_at   DateTime    @default(now())
+
+  center              CollectionCenter      @relation(fields: [center_id], references: [id], onDelete: Restrict)
+  recycler            User                  @relation(fields: [recycler_id], references: [id], onDelete: Restrict)
+  batch_items         ProcessingBatchItem[]
+  material_recoveries MaterialRecovery[]
+
+  @@map("processing_batches")
+}
+
+model ProcessingBatchItem {
+  batch_id            String
+  item_id             String
+  processed_weight_kg Float
+  added_at            DateTime @default(now())
+
+  batch ProcessingBatch @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  item  EwasteItem      @relation(fields: [item_id], references: [id], onDelete: Restrict)
+
+  @@id([batch_id, item_id])
+  @@map("processing_batch_items")
+}
+
+model RecoverableMaterial {
+  id          Int                @id @default(autoincrement())
+  name        String             @unique
+  unit        String
+  description String?
+  recoveries  MaterialRecovery[]
+
+  @@map("recoverable_materials")
+}
+
+model MaterialRecovery {
+  id            String   @id @default(uuid())
+  batch_id      String
+  material_id   Int
+  quantity_kg   Float
+  recovery_date DateTime @default(now())
+
+  batch    ProcessingBatch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  material RecoverableMaterial @relation(fields: [material_id], references: [id], onDelete: Restrict)
+
+  @@map("material_recoveries")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  user_id     String
+  action      String
+  entity_type String
+  entity_id   String
+  old_value   String?
+  new_value   String?
+  timestamp   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  user_id    String
+  type       String
+  title      String
+  message    String
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
