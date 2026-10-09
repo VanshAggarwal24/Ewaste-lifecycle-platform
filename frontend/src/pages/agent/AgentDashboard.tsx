@@ -3,7 +3,7 @@ import DashboardLayout from '../../layouts/DashboardLayout';
 import { getPickups, confirmPickup } from '../../services/api';
 import { StatusBadge } from '../../components/StatusBadge';
 import { format } from '../../utils/format';
-import { Truck, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
+import { Truck, CheckCircle2, AlertCircle, MapPin, Phone, User, Package, Clock, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function AgentDashboard() {
   const [pickups, setPickups] = useState<any[]>([]);
@@ -24,96 +24,165 @@ export default function AgentDashboard() {
     setMsg(''); setError('');
     try {
       await confirmPickup(pickupId, {});
-      setMsg('Pickup confirmed successfully!');
+      setMsg('Pickup verified and recorded as COLLECTED. Chain of custody updated.');
       load();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to confirm pickup.');
+      setError(err.response?.data?.error || 'Failed to confirm pickup. Please try again.');
     } finally {
       setConfirming(null);
     }
   };
 
   const active    = pickups.filter(p => ['PICKUP_ASSIGNED', 'PICKUP_REQUESTED'].includes(p.status));
-  const completed = pickups.filter(p => ['COLLECTED', 'COMPLETED'].includes(p.status));
+  const completed = pickups.filter(p => ['COLLECTED', 'RECEIVED_AT_CENTER'].includes(p.status));
 
   return (
     <DashboardLayout>
       <div className="fade-in space-y-6">
+        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>Agent Dashboard</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
-            Manage your assigned pickup requests.
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-100">Field Logistics & Collection Operations</h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-800/40">
+              Agent Portal
+            </span>
+          </div>
+          <p className="text-sm text-slate-400">
+            Assigned doorstep pickups, route details, and custodial handoff verification.
           </p>
         </div>
 
-        {/* Summary */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: 'Active Pickups',    value: active.length,    color: '#fbbf24' },
-            { label: 'Completed Today',   value: completed.length, color: '#4ade80' },
-            { label: 'Total Assigned',    value: pickups.length,   color: '#a78bfa' },
-          ].map(k => (
-            <div key={k.label} className="glass-card p-4 text-center">
-              <p className="text-2xl font-bold" style={{ color: k.color }}>{k.value}</p>
-              <p className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>{k.label}</p>
+        {/* Operational Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="eco-card p-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Queue</span>
+              <Truck size={18} className="text-amber-400" />
             </div>
-          ))}
+            <p className="text-2xl font-bold text-slate-100">{active.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Pending physical collection</p>
+          </div>
+
+          <div className="eco-card p-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Collected Today</span>
+              <CheckCircle2 size={18} className="text-emerald-400" />
+            </div>
+            <p className="text-2xl font-bold text-emerald-400">{completed.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Verified handoffs delivered</p>
+          </div>
+
+          <div className="eco-card p-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">All-Time Dispatches</span>
+              <ShieldCheck size={18} className="text-purple-400" />
+            </div>
+            <p className="text-2xl font-bold text-slate-100">{pickups.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Total assignments logged</p>
+          </div>
         </div>
 
+        {/* Feedback alerts */}
         {msg && (
-          <div className="flex items-center gap-2 p-3 rounded-xl text-sm"
-            style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', color: '#86efac' }}>
-            <CheckCircle size={16} />{msg}
+          <div className="flex items-center gap-2.5 p-3.5 rounded-xl text-sm"
+            style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#34d399' }}>
+            <CheckCircle2 size={18} className="flex-shrink-0" />
+            <span>{msg}</span>
           </div>
         )}
         {error && (
-          <div className="flex items-center gap-2 p-3 rounded-xl text-sm"
-            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
-            <AlertCircle size={16} />{error}
+          <div className="flex items-center gap-2.5 p-3.5 rounded-xl text-sm"
+            style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#fca5a5' }}>
+            <AlertCircle size={18} className="flex-shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        {/* Active pickups */}
-        <div className="glass-card p-5">
-          <h2 className="font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Active Pickups</h2>
+        {/* Active Dispatches */}
+        <div className="eco-card p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800/60">
+            <div>
+              <h2 className="text-base font-bold text-slate-100">Scheduled Pickups</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Collect e-waste packages directly from citizen residences.</p>
+            </div>
+            <span className="text-xs font-mono text-slate-400">{active.length} pending</span>
+          </div>
+
           {loading ? (
-            <p className="text-sm" style={{ color: 'var(--color-muted)' }}>Loading…</p>
+            <div className="py-12 flex flex-col items-center justify-center text-slate-400">
+              <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-2" />
+              <span className="text-xs">Fetching assigned pickups…</span>
+            </div>
           ) : active.length === 0 ? (
-            <div className="text-center py-10">
-              <Truck size={36} style={{ color: 'var(--color-border)', margin: '0 auto 10px' }} />
-              <p className="text-sm" style={{ color: 'var(--color-muted)' }}>No active pickups assigned.</p>
+            <div className="text-center py-12">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800/60 flex items-center justify-center mx-auto mb-3 text-slate-500">
+                <Truck size={24} />
+              </div>
+              <p className="text-sm font-medium text-slate-200">No active pickups currently assigned</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                When new citizen submissions are processed by the smart dispatch engine, they will appear here.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {active.map(p => (
-                <div key={p.id} className="rounded-xl p-4" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
+                <div key={p.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
                         <StatusBadge status={p.status} />
-                        <span className="text-xs font-mono" style={{ color: 'var(--color-muted)' }}>
-                          #{p.id.slice(0, 8)}
+                        <span className="text-xs font-mono text-slate-500">#{p.id.slice(0, 8)}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                        <User size={15} className="text-slate-400" />
+                        <span>{p.user?.name ?? 'Anonymous Citizen'}</span>
+                        {p.user?.phone && (
+                          <span className="text-xs font-mono text-slate-400 flex items-center gap-1 ml-2">
+                            <Phone size={12} /> {p.user?.phone}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                        <MapPin size={13} className="text-amber-400 flex-shrink-0" />
+                        <span>
+                          {p.latitude ? `Coords: ${p.latitude.toFixed(4)}, ${p.longitude?.toFixed(4)}` : p.center?.address ?? 'Target Center Intake'}
                         </span>
                       </div>
-                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                        {p.user?.name ?? 'Unknown'} · {p.user?.phone ?? ''}
-                      </p>
-                      <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
-                        <MapPin size={12} />
-                        {p.latitude ? `${p.latitude.toFixed(4)}, ${p.longitude?.toFixed(4)}` : p.center?.address ?? '—'}
+
+                      <div className="flex items-center gap-4 text-xs text-slate-400 pt-1">
+                        <span className="flex items-center gap-1">
+                          <Package size={13} />
+                          {p.items?.length ?? 0} item(s) attached
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock size={13} />
+                          Scheduled: {format.datetime(p.scheduled_at)}
+                        </span>
                       </div>
-                      <p className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>
-                        Scheduled: {format.datetime(p.scheduled_at)} · {p.items?.length ?? 0} item(s)
-                      </p>
                     </div>
+
                     {p.status === 'PICKUP_ASSIGNED' && (
                       <button
                         onClick={() => handleConfirm(p.id)}
                         disabled={confirming === p.id}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
-                        style={{ background: 'var(--color-primary)', color: 'white', opacity: confirming === p.id ? 0.6 : 1 }}>
-                        <CheckCircle size={14} />
-                        {confirming === p.id ? 'Confirming…' : 'Confirm Collected'}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white shadow transition-all cursor-pointer self-start sm:self-center"
+                        style={{
+                          background: confirming === p.id ? 'var(--color-surface-3)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        }}
+                      >
+                        {confirming === p.id ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Updating State…</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 size={15} />
+                            <span>Confirm Collected</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
@@ -123,17 +192,16 @@ export default function AgentDashboard() {
           )}
         </div>
 
-        {/* Completed */}
+        {/* Completed Deliveries */}
         {completed.length > 0 && (
-          <div className="glass-card p-5">
-            <h2 className="font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Completed Pickups</h2>
-            <div className="space-y-2">
+          <div className="eco-card p-5 sm:p-6">
+            <h2 className="text-base font-bold text-slate-100 mb-3">Recent Completed Collections</h2>
+            <div className="divide-y divide-slate-800/60">
               {completed.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-3 rounded-xl"
-                  style={{ background: 'var(--color-surface-2)' }}>
+                <div key={p.id} className="py-3 flex items-center justify-between text-xs">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{p.user?.name ?? '—'}</p>
-                    <p className="text-xs" style={{ color: 'var(--color-muted)' }}>{format.date(p.collected_at)}</p>
+                    <span className="font-semibold text-slate-200">{p.user?.name ?? 'Citizen'}</span>
+                    <p className="text-slate-500 font-mono text-[11px]">#{p.id.slice(0, 8)} · {format.date(p.collected_at)}</p>
                   </div>
                   <StatusBadge status={p.status} />
                 </div>

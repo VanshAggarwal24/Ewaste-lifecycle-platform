@@ -9,7 +9,7 @@ dotenv.config();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 export const prisma = new PrismaClient({ adapter });
 
-const app = express();
+export const app = express();
 app.use(cors());
 app.use(express.json());
 
@@ -23,6 +23,7 @@ import categoryRoutes   from './routes/categories';
 import centerRoutes     from './routes/centers';
 import materialRoutes   from './routes/materials';
 import inspectionRoutes from './routes/inspections';
+import userRoutes       from './routes/users';
 
 app.use('/api/auth',        authRoutes);
 app.use('/api/ewaste',      ewasteRoutes);
@@ -33,9 +34,12 @@ app.use('/api/categories',  categoryRoutes);
 app.use('/api/centers',     centerRoutes);
 app.use('/api/materials',   materialRoutes);
 app.use('/api/inspections', inspectionRoutes);
+app.use('/api/users',       userRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}

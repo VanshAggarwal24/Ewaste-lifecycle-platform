@@ -4,20 +4,38 @@ import { authenticateToken, AuthRequest, requireRole } from '../middlewares/auth
 
 const router = Router();
 
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+async function getStaffCenterId(userId: string): Promise<string | null> {
+  const profile = await prisma.centerStaffProfile.findUnique({ where: { user_id: userId } });
+  return profile?.center_id ?? null;
+}
+
+router.get(
+  '/',
+  authenticateToken,
+  requireRole(['USER', 'COLLECTION_AGENT', 'CENTER_STAFF', 'ADMIN']),
+  async (req: AuthRequest, res) => {
   try {
-    let whereClause = {};
+    let whereClause: Record<string, unknown> = {};
     if (req.user.role === 'USER') whereClause = { user_id: req.user.userId };
     else if (req.user.role === 'COLLECTION_AGENT') whereClause = { agent_id: req.user.userId };
-    // Centers see all pickups assigned to their center, etc.
+    else if (req.user.role === 'CENTER_STAFF') {
+      const centerId = await getStaffCenterId(req.user.userId);
+      if (!centerId) {
+        res.status(403).json({ error: 'Center staff profile not found' });
+        return;
+      }
+      whereClause = { center_id: centerId };
+    }
 
     const pickups = await prisma.pickupRequest.findMany({
       where: whereClause,
       include: {
         user: { select: { name: true, phone: true } },
+        agent: { select: { name: true } },
         center: true,
         items: true
-      }
+      },
+      orderBy: { created_at: 'desc' }
     });
 
     res.json(pickups);
@@ -26,10 +44,105 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+router.post(
+  '/:id/assign',
+  authenticateToken,
+  requireRole(['ADMIN']),
+  async (req: AuthRequest, res): Promise<void> => {
+    const pickupId = req.params.id;
+    const { agent_id: requestedAgentId } = req.body;
+    if (typeof pickupId !== 'string') {
+      res.status(400).json({ error: 'Invalid pickup ID' });
+      return;
+    }
+    if (requestedAgentId !== null && typeof requestedAgentId !== 'string') {
+      res.status(400).json({ error: 'agent_id must be a collection agent ID or null' });
+      return;
+    }
+
+    try {
+      const pickup = await prisma.$transaction(async (tx) => {
+        const current = await tx.pickupRequest.findUnique({
+          where: { id: pickupId },
+          include: { items: true },
+        });
+        if (!current) throw new Error('Pickup not found');
+        if (!['PICKUP_REQUESTED', 'PICKUP_ASSIGNED'].includes(current.status)) {
+          throw new Error('Only uncollected pickups can be assigned or reassigned');
+        }
+        if (current.items.length === 0) throw new Error('Pickup has no e-waste items');
+
+        const targetStatus = requestedAgentId ? 'PICKUP_ASSIGNED' : 'PICKUP_REQUESTED';
+        if (requestedAgentId === current.agent_id && current.status === targetStatus) return current;
+
+        if (requestedAgentId) {
+          const agent = await tx.collectionAgentProfile.findFirst({
+            where: {
+              user_id: requestedAgentId,
+              available_status: true,
+              user: { active: true, role: { name: 'COLLECTION_AGENT' } },
+            },
+          });
+          if (!agent) throw new Error('Selected collection agent is unavailable');
+
+          const expectedWeight = current.items.reduce(
+            (sum, item) => sum + (item.actual_weight_kg ?? item.estimated_weight_kg),
+            0,
+          );
+          if (agent.current_load_kg + expectedWeight > agent.max_load_kg) {
+            throw new Error('Selected collection agent does not have enough capacity');
+          }
+        }
+
+        const updated = await tx.pickupRequest.updateMany({
+          where: { id: pickupId, status: current.status, agent_id: current.agent_id },
+          data: {
+            agent_id: requestedAgentId,
+            status: targetStatus,
+            assigned_at: requestedAgentId ? new Date() : null,
+          },
+        });
+        if (updated.count !== 1) throw new Error('Pickup changed concurrently; reload and try again');
+
+        for (const item of current.items) {
+          if (!['PICKUP_REQUESTED', 'PICKUP_ASSIGNED'].includes(item.status)) {
+            throw new Error(`Item ${item.id} is not in an assignable state`);
+          }
+          await tx.ewasteItem.update({
+            where: { id: item.id },
+            data: { status: targetStatus },
+          });
+          await tx.statusHistory.create({
+            data: {
+              item_id: item.id,
+              old_status: item.status,
+              new_status: targetStatus,
+              changed_by: req.user.userId,
+              remarks: requestedAgentId ? 'Assigned by administrator' : 'Returned to unassigned queue',
+            },
+          });
+        }
+
+        return tx.pickupRequest.findUniqueOrThrow({ where: { id: pickupId } });
+      });
+
+      res.json({ message: pickup.agent_id ? 'Pickup assigned' : 'Pickup returned to unassigned queue', pickup });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to assign pickup';
+      const status = message === 'Pickup not found' ? 404 : 409;
+      res.status(status).json({ error: message });
+    }
+  },
+);
+
 // Transactional endpoint for Collection Agent confirming pickup
 router.post('/:id/confirm', authenticateToken, requireRole(['COLLECTION_AGENT']), async (req: AuthRequest, res): Promise<void> => {
   try {
     const pickupId = req.params.id;
+    if (typeof pickupId !== 'string') {
+      res.status(400).json({ error: 'Invalid pickup ID' });
+      return;
+    }
     const { actual_weight_kg } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
@@ -97,21 +210,32 @@ router.post('/:id/confirm', authenticateToken, requireRole(['COLLECTION_AGENT'])
 router.post('/:id/receive', authenticateToken, requireRole(['CENTER_STAFF']), async (req: AuthRequest, res): Promise<void> => {
   try {
     const pickupId = req.params.id;
+    if (typeof pickupId !== 'string') {
+      res.status(400).json({ error: 'Invalid pickup ID' });
+      return;
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const pickup = await tx.pickupRequest.findFirst({
         where: { id: pickupId, status: 'COLLECTED' },
-        include: { items: true }
+        include: { items: true, center: true }
       });
 
       if (!pickup) throw new Error('Pickup not found or not COLLECTED');
 
       const totalWeight = pickup.items.reduce((sum, item) => sum + (item.actual_weight_kg || item.estimated_weight_kg), 0);
 
-      // Update pickup
+      if (req.user.role === 'CENTER_STAFF') {
+        const centerId = await getStaffCenterId(req.user.userId);
+        if (!centerId || pickup.center_id !== centerId) {
+          throw new Error('Pickup does not belong to your collection center');
+        }
+      }
+
+      // Update pickup — terminal state for the pickup request
       await tx.pickupRequest.update({
         where: { id: pickupId },
-        data: { status: 'COMPLETED', completed_at: new Date() }
+        data: { status: 'RECEIVED_AT_CENTER', completed_at: new Date() }
       });
 
       // Update items

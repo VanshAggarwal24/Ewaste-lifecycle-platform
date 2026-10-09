@@ -13,7 +13,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401 || err.response?.status === 403) {
+    if ((err.response?.status === 401 || err.response?.status === 403) && !err.config?.url?.includes('/auth/login')) {
       localStorage.clear();
       window.location.href = '/login';
     }
@@ -55,3 +55,4 @@ export const getCenters        = () => api.get('/centers');
 
 // Users (admin)
 export const getUsers          = () => api.get('/users');
+export const getRecyclers      = () => api.get('/users/recyclers');

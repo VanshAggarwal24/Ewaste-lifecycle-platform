@@ -17,9 +17,11 @@ const statusLabels: Record<string, string> = {
 export function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`status-${status} text-xs font-semibold px-2 py-1 rounded-full inline-block`}
+      className={`status-${status} inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-full transition-colors`}
     >
-      {statusLabels[status] ?? status}
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+      {statusLabels[status] ?? status?.replace(/_/g, ' ')}
     </span>
   );
 }
+

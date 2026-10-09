@@ -23,6 +23,9 @@ import RecyclerDashboard from './pages/recycler/RecyclerDashboard';
 
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers     from './pages/admin/AdminUsers';
+import AdminEwaste    from './pages/admin/AdminEwaste';
+import AdminPickups   from './pages/admin/AdminPickups';
 
 function Unauthorized() {
   return (
@@ -69,6 +72,9 @@ export default function App() {
           {/* Admin */}
           <Route path="/admin/dashboard" element={<ProtectedRoute roles={['ADMIN']}><AdminDashboard /></ProtectedRoute>} />
           <Route path="/admin/analytics" element={<ProtectedRoute roles={['ADMIN']}><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/admin/users"     element={<ProtectedRoute roles={['ADMIN']}><AdminUsers /></ProtectedRoute>} />
+          <Route path="/admin/ewaste"    element={<ProtectedRoute roles={['ADMIN']}><AdminEwaste /></ProtectedRoute>} />
+          <Route path="/admin/pickups"   element={<ProtectedRoute roles={['ADMIN']}><AdminPickups /></ProtectedRoute>} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />

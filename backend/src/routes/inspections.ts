@@ -63,9 +63,18 @@ router.post('/', authenticateToken, requireRole(['CENTER_STAFF', 'ADMIN']), asyn
   }
 });
 
-router.get('/', authenticateToken, async (_req, res) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    let where: Record<string, unknown> | undefined;
+    if (req.user.role === 'CENTER_STAFF') {
+      const profile = await prisma.centerStaffProfile.findUnique({ where: { user_id: req.user.userId } });
+      if (profile) {
+        where = { item: { pickup_request: { center_id: profile.center_id } } };
+      }
+    }
+
     const inspections = await prisma.inspection.findMany({
+      where,
       include: { item: { include: { category: true } }, inspector: { select: { name: true } } },
       orderBy: { inspected_at: 'desc' }
     });

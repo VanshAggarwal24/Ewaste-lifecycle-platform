@@ -7,7 +7,18 @@ const router = Router();
 
 router.post('/register', async (req, res): Promise<void> => {
   try {
-    const { email, password, name, roleName, phone, latitude, longitude } = req.body;
+    const { email, password, name, phone, latitude, longitude } = req.body;
+
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      password.length < 8 ||
+      typeof name !== 'string' ||
+      !name.trim()
+    ) {
+      res.status(400).json({ error: 'A valid name, email, and password of at least 8 characters are required' });
+      return;
+    }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
@@ -15,7 +26,7 @@ router.post('/register', async (req, res): Promise<void> => {
       return;
     }
 
-    const role = await prisma.role.findUnique({ where: { name: roleName || 'USER' } });
+    const role = await prisma.role.findUnique({ where: { name: 'USER' } });
     if (!role) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -73,7 +84,7 @@ router.post('/login', async (req, res): Promise<void> => {
       { expiresIn: '24h' }
     );
 
-    res.json({ token, role: user.role.name, name: user.name, userId: user.id });
+    res.json({ token, role: user.role.name, name: user.name, userId: user.id, email: user.email });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });

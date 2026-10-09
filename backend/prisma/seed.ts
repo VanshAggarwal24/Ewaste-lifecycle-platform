@@ -25,8 +25,9 @@ async function main() {
   const agentRole = await prisma.role.findUnique({ where: { name: 'COLLECTION_AGENT' } });
   const centerStaffRole = await prisma.role.findUnique({ where: { name: 'CENTER_STAFF' } });
   const recyclerRole = await prisma.role.findUnique({ where: { name: 'RECYCLER' } });
+  const adminRole = await prisma.role.findUnique({ where: { name: 'ADMIN' } });
   
-  if (!userRole || !agentRole || !centerStaffRole || !recyclerRole) throw new Error('Roles missing');
+  if (!userRole || !agentRole || !centerStaffRole || !recyclerRole || !adminRole) throw new Error('Roles missing');
 
   // 2. Categories
   const cat1 = await prisma.ewasteCategory.upsert({
@@ -109,6 +110,17 @@ async function main() {
       password_hash,
       name: 'Recycle Corp',
       role_id: recyclerRole.id
+    }
+  });
+
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@test.com' },
+    update: {},
+    create: {
+      email: 'admin@test.com',
+      password_hash,
+      name: 'Admin User',
+      role_id: adminRole.id
     }
   });
 

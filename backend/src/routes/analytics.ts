@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { prisma } from '../index';
-import { authenticateToken } from '../middlewares/auth';
+import { authenticateToken, requireRole } from '../middlewares/auth';
 
 const router = Router();
 
-router.get('/kpis', authenticateToken, async (_req, res) => {
+router.get('/kpis', authenticateToken, requireRole(['ADMIN']), async (_req, res) => {
   try {
     const totalCollected = await prisma.ewasteItem.aggregate({
       where: { status: { in: ['COLLECTED', 'RECEIVED_AT_CENTER', 'INSPECTED', 'PROCESSING', 'RECYCLED', 'REFURBISHED', 'DISPOSED'] } },
@@ -45,7 +45,7 @@ router.get('/kpis', authenticateToken, async (_req, res) => {
   }
 });
 
-router.get('/charts', authenticateToken, async (_req, res) => {
+router.get('/charts', authenticateToken, requireRole(['ADMIN']), async (_req, res) => {
   try {
     // Monthly collection trend
     const monthly = await prisma.$queryRaw`

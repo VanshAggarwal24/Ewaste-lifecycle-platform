@@ -18,26 +18,32 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState<User | null>(() => {
     const token = localStorage.getItem('token');
     const role  = localStorage.getItem('role');
     const name  = localStorage.getItem('name');
     const email = localStorage.getItem('email');
     const userId = localStorage.getItem('userId');
-    if (token && role && name && userId && email) {
-      setUser({ token, role, name, email, userId });
+    if (token && role && name && userId) {
+      return { token, role, name, email: email || '', userId };
     }
-  }, []);
+    return null;
+  });
 
-  const login = (data: User) => {
-    localStorage.setItem('token',  data.token);
-    localStorage.setItem('role',   data.role);
-    localStorage.setItem('name',   data.name);
-    localStorage.setItem('email',  data.email);
-    localStorage.setItem('userId', data.userId);
-    setUser(data);
+  const login = (data: Partial<User> & { token: string; role: string; name: string; userId: string; email?: string }) => {
+    const userObj: User = {
+      token: data.token,
+      role: data.role,
+      name: data.name,
+      userId: data.userId,
+      email: data.email || '',
+    };
+    localStorage.setItem('token',  userObj.token);
+    localStorage.setItem('role',   userObj.role);
+    localStorage.setItem('name',   userObj.name);
+    localStorage.setItem('email',  userObj.email);
+    localStorage.setItem('userId', userObj.userId);
+    setUser(userObj);
   };
 
   const logout = () => {

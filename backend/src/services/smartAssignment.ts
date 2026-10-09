@@ -20,7 +20,7 @@ export async function assignPickup(pickupId: string, itemWeight: number) {
   });
 
   if (!pickup) throw new Error('Pickup not found');
-  if (!pickup.latitude || !pickup.longitude) throw new Error('Pickup location missing');
+  if (pickup.latitude === null || pickup.longitude === null) throw new Error('Pickup location missing');
 
   // Get available agents
   const agents = await prisma.collectionAgentProfile.findMany({
@@ -36,7 +36,7 @@ export async function assignPickup(pickupId: string, itemWeight: number) {
   const MAX_EXPECTED_DISTANCE_KM = 50; // Assume max distance is 50km for score normalization
 
   for (const agent of agents) {
-    if (!agent.user.latitude || !agent.user.longitude) continue;
+    if (agent.user.latitude === null || agent.user.longitude === null) continue;
 
     const distance = getDistance(
       pickup.latitude, pickup.longitude, 
@@ -64,22 +64,35 @@ export async function assignPickup(pickupId: string, itemWeight: number) {
   }
 
   if (bestAgent) {
-    // Assign to best agent transactionally
-    await prisma.pickupRequest.update({
-      where: { id: pickupId },
-      data: {
-        agent_id: bestAgent.user_id,
-        status: 'PICKUP_ASSIGNED',
-        assigned_at: new Date()
+    const items = await prisma.ewasteItem.findMany({ where: { pickup_request_id: pickupId } });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.pickupRequest.update({
+        where: { id: pickupId },
+        data: {
+          agent_id: bestAgent!.user_id,
+          status: 'PICKUP_ASSIGNED',
+          assigned_at: new Date()
+        }
+      });
+
+      for (const item of items) {
+        await tx.ewasteItem.update({
+          where: { id: item.id },
+          data: { status: 'PICKUP_ASSIGNED' }
+        });
+        await tx.statusHistory.create({
+          data: {
+            item_id: item.id,
+            old_status: item.status,
+            new_status: 'PICKUP_ASSIGNED',
+            changed_by: bestAgent!.user_id,
+            remarks: 'Smart assignment to collection agent'
+          }
+        });
       }
     });
-    
-    // Update ewaste item statuses
-    await prisma.ewasteItem.updateMany({
-      where: { pickup_request_id: pickupId },
-      data: { status: 'PICKUP_ASSIGNED' }
-    });
-    
+
     return bestAgent.user_id;
   }
   
