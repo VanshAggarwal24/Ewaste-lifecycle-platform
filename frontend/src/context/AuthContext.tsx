@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ApiError,
   apiGet,
@@ -70,8 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [canPersistSession, setCanPersistSession] = useState(() => isSessionPersistenceAvailable());
 
+  /**
+   * True once a session has been established for *this page load* (a successful sign-in or a
+   * restored session). Until then, a 401 is routine housekeeping rather than news: it means the
+   * browser was holding a token from a previous visit that is no longer usable.
+   */
+  const sessionEstablished = useRef(false);
+
   /** Ends the session locally: no token, no user, and a reason for the login screen. */
   const endSession = useCallback((notice: string | null) => {
+    sessionEstablished.current = false;
     setStoredToken(null);
     setToken(null);
     setUserState(null);
@@ -88,12 +96,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler((_error, failedToken) => {
       if (!failedToken || getStoredToken() !== failedToken) return;
-      endSession('Your session has ended. Please sign in again.');
+      endSession(
+        sessionEstablished.current ? 'Your session has ended. Please sign in again.' : null,
+      );
     });
     return () => setUnauthorizedHandler(null);
   }, [endSession]);
 
-  const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
+  /**
+   * Re-reads the current user from the API.
+   *
+   * `announce` decides whether a rejection is explained on the sign-in screen. A token that is
+   * already unusable *when the app starts* (left over from an older visit, or long expired) is
+   * routine housekeeping: it is discarded quietly and the visitor simply sees the sign-in form.
+   * A rejection that arrives while somebody is using the app is a real event — that session
+   * ended — and is worth explaining.
+   */
+  const refreshUser = useCallback(async ({ announce = true }: { announce?: boolean } = {}): Promise<AuthUser | null> => {
     const tokenAtStart = getStoredToken();
     if (!tokenAtStart) {
       setUserState(null);
@@ -103,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await apiGet<{ user: AuthUser }>('/api/auth/me');
       // If the token changed while this call was in flight, a newer session owns the state.
       if (getStoredToken() !== tokenAtStart) return null;
+      sessionEstablished.current = true;
       setUserState(me.user);
       return me.user;
     } catch (caught) {
@@ -110,8 +130,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const status = caught instanceof ApiError ? caught.status : 0;
       if (status === 401) {
-        // The token really is gone.
-        endSession('Your session has ended. Please sign in again.');
+        // The token really is gone. Only say so when the visitor was actively using the app.
+        endSession(
+          announce ? 'Your session has ended. Please sign in again.' : null,
+        );
       } else if (status === 403) {
         // Authenticated but refused (a suspended account, for instance). The token is still
         // valid: keep it, and explain what the API said instead of claiming the session ended.
@@ -132,7 +154,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!cancelled) await refreshUser();
+      // Silent on purpose: arriving with a token that no longer works must not greet the
+      // visitor with "your session has ended" before they have done anything.
+      if (!cancelled) await refreshUser({ announce: false });
       if (!cancelled) setInitializing(false);
     })();
     return () => {
@@ -146,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // already find the token in place.
     setStoredToken(response.token);
     setToken(response.token);
+    sessionEstablished.current = true;
     setUserState(response.user);
     setSessionNotice(null);
     setCanPersistSession(isSessionPersistenceAvailable());
@@ -156,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await apiPost<LoginResponse>('/api/auth/register', payload);
     setStoredToken(response.token);
     setToken(response.token);
+    sessionEstablished.current = true;
     setUserState(response.user);
     setSessionNotice(null);
     setCanPersistSession(isSessionPersistenceAvailable());

@@ -27,7 +27,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['tests/live/**/*.live.ts'],
+    include: ['tests/live/**/*.live.{ts,tsx}'],
     testTimeout: 20_000,
   },
 });

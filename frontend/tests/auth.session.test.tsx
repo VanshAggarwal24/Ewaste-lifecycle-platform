@@ -160,19 +160,20 @@ describe('restoring a session on page load', () => {
 });
 
 describe('an expired token', () => {
-  it('ends the session only for the request that used the current token', async () => {
-    setStoredToken('tok-live');
-
+  it('ends the session and explains it when the session was in use', async () => {
     stubApi({
+      '/api/auth/login': { status: 200, body: { data: { token: 'tok-live', user: ADMIN_USER } } },
       '/api/dashboard': {
         status: 401,
         body: { error: { code: 'TOKEN_EXPIRED', message: 'Token expired' } },
       },
-      '/api/auth/login': { status: 200, body: { data: { token: 'tok-new', user: ADMIN_USER } } },
     });
 
     function Probe() {
-      const { user, sessionNotice } = useAuth();
+      const { user, sessionNotice, login } = useAuth();
+      useEffect(() => {
+        void login('admin@ecocycle.test', 'Passw0rd123').catch(() => undefined);
+      }, [login]);
       return (
         <>
           <p data-testid="user">{user?.fullName ?? 'anonymous'}</p>
@@ -187,6 +188,10 @@ describe('an expired token', () => {
       </AuthProvider>,
     );
 
+    // The session is established …
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('Ananya Rao'));
+
+    // … and a request made with it is rejected: the session ends, with an explanation.
     await apiGet('/api/dashboard').catch(() => undefined);
 
     await waitFor(() =>

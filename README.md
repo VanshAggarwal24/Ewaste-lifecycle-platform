@@ -466,7 +466,7 @@ returns the API's own explanation, and the UI shows it verbatim.
 
 ## Automated tests
 
-### Backend — 11 suites, 228 tests
+### Backend — 12 suites, 237 tests
 
 ```powershell
 cd backend
@@ -479,8 +479,8 @@ npm run test:coverage    # with a coverage report
 Verified on this repository:
 
 ```
-Test Suites: 11 passed, 11 total
-Tests:       228 passed, 228 total
+Test Suites: 12 passed, 12 total
+Tests:       237 passed, 237 total
 ```
 
 | Suite | Tests | Covers |
@@ -492,6 +492,7 @@ Tests:       228 passed, 228 total
 | `integration/lifecycle.test.ts` | 17 | the full path from submission to completed recycling, asserting persisted rows after every step |
 | `integration/auth.test.ts` | 32 | registration (including role injection and case-insensitive emails), login, suspension, token handling, profile self-service, and the login → authenticated-call contract |
 | `unit/roles.test.ts` | 2 | the five role strings match the PostgreSQL enum and the client's routing vocabulary |
+| `integration/cors.test.ts` | 9 | browser CORS: requests without `Origin`, the opaque origin of a sandboxed preview iframe (`Origin: null`), dev/preview hosts, and the rule that a **disallowed origin is answered normally without CORS headers — never a 5xx** |
 | `integration/authorization.test.ts` | 37 | the unauthenticated wall, record-level ownership, role gates, per-role data scoping, input hardening |
 | `integration/guards.test.ts` | 25 | duplicate prevention, illegal transitions, assignment edge cases, cancellation semantics, agent failure paths |
 | `integration/admin.test.ts` | 29 | privileged account creation, user/centre/category management, analytics that agree with raw SQL, profile summaries |
@@ -502,7 +503,7 @@ The integration suites run against a **separate database** (`TEST_DATABASE_URL`)
 its own fixtures. Your development data is never touched, and the helper refuses to run if
 `TEST_DATABASE_URL` is missing or identical to `DATABASE_URL`.
 
-### Frontend — 28 hermetic tests + 11 live smoke tests
+### Frontend — 33 hermetic tests + 17 live tests
 
 ```powershell
 cd frontend
@@ -518,7 +519,9 @@ npm run typecheck # app, node and test TypeScript projects
 | `tests/auth.redirect.test.tsx` | 3 | the screen a user lands on after signing in: a role is never sent to a route its guard refuses (the administrator-after-a-staff-session case), a permitted destination is still honoured, and `/login`/`/register` are never redirect targets |
 | `tests/auth.session.test.tsx` | 5 | a late 401 belonging to an **older token** cannot end the session that replaced it; a genuine 403 keeps the token, the page and the current session (and shows the API's reason); a protected page renders nothing and issues no data request until the session has been restored |
 | `tests/roles.test.ts` | 7 | the five role strings match the backend enum, every role can open its own home screen, other roles' screens are refused, and parameterised routes resolve |
+| `tests/auth.notice.test.tsx` | 5 | the session-ended notice: a token left over from an earlier visit is discarded **silently** on arrival, an unreachable API does not destroy the token, sign-in still works afterwards, a session that ends *while in use* is explained, and a stale notice is cleared when a new attempt starts |
 | `tests/live/auth.live.ts` | 11 | against the **real** API through the dev proxy: all five seeded accounts sign in and reach their own dashboard with the bearer token; the proxy forwards `Authorization` (raw `fetch`, no client); a persisted token restores a session; a blocked-storage login works; and a genuine 403 (`FORBIDDEN`) is distinguishable from a lost session (`UNAUTHENTICATED`/`INVALID_CREDENTIALS`) |
+| `tests/live/login.preview.live.tsx` | 6 | the preview itself: the real `App` (routers, guards, auth context, login form) mounted against the running API with Web Storage blocked — each of the five roles signs in through the form, lands on its own dashboard, sees its name, and is never shown a session warning or a 403 |
 
 The live suite is excluded from `npm test` so the default run stays hermetic and CI-safe; it
 is meant to be run while the two dev servers are up, and it can be pointed at another host with
@@ -590,6 +593,14 @@ candidate table — useful for demonstrating the algorithm without changing data
   [Known limitations](#known-limitations) for why not the native `bcrypt`), cost factor
   configurable via `BCRYPT_SALT_ROUNDS`, plus a policy check (length, letter, digit).
   Hashes are never selected into a response, and a serialiser strips them as defence in depth.
+* **CORS** — the browser sends an `Origin` header on every `POST`, and a sandboxed preview
+  iframe sends the literal `null` (an opaque origin). The API therefore allows: requests with
+  no origin (curl, server-to-server, same-origin GETs), anything in `CORS_ORIGINS`, an origin
+  equal to the host the request was addressed to (a same-origin request is not a CORS request
+  at all), and — in development only — `localhost`, `*.e2b.app` and `null`. A **disallowed**
+  origin is answered normally, just without `Access-Control-Allow-Origin`, so the browser
+  blocks the read; it is deliberately never an error, because an error there meant a `500` to
+  an ordinary browser request and made sign-in impossible from an unrecognised preview host.
 * **Sessions** — stateless JWT (`HS256`) with an expiry (`JWT_EXPIRES_IN`, default 8 h). The
   secret comes from the environment; production refuses to start with a short one. The token is
   verified on every request and the user is re-read from the database, so suspension takes
@@ -600,11 +611,13 @@ candidate table — useful for demonstrating the algorithm without changing data
   `allow-same-origin`), Safari private mode and some embedded webviews throw on any Web Storage
   access; the client keeps working there and simply cannot survive a reload, which the login
   screen states. A `401` on any request other than the credential endpoints drops the session
-  and returns the visitor to `/login` with an explanation. Two rules keep that from
-  mis-firing: a rejection is only acted on when it belongs to the token that is still current
-  (a late response from a previous session cannot end a newer one), and **403 is never treated
-  as an expiry** — it means "authenticated, but not allowed", so the token and the page stay
-  and the API's own reason is displayed.
+  and returns the visitor to `/login` with an explanation. Three rules keep that from
+  misfiring: a rejection is only acted on when it belongs to the token that is still current
+  (a late response from a previous session cannot end a newer one); **403 is never treated as
+  an expiry** — it means "authenticated, but not allowed", so the token and the page stay and
+  the API's own reason is displayed; and a token that is already unusable *when the page
+  loads* is discarded quietly, because arriving with stale credentials is routine housekeeping,
+  not an event worth announcing on the sign-in screen.
 * **Authorization** — `requireRole(...)` per route plus per-record ownership filters inside the
   queries themselves, so a citizen cannot read another citizen's item even by guessing its id
   (such lookups return `404`, not `403`, to avoid leaking existence).
@@ -736,6 +749,8 @@ Honest scope boundaries — useful for a viva or a code review:
 | `Cannot find module '.prisma/client'` | Run `npx prisma generate` (also part of `npm run build`) |
 | Frontend loads but every page shows a network error | The API is not running, or it is on another port. Start `npm run dev` in `backend`, and check `VITE_PROXY_TARGET` in `frontend/.env` |
 | `Unexpected token '<' … is not valid JSON` | A request hit the dev server instead of the API — usually a wrong `VITE_API_URL`, or the backend crashed. Check the backend log |
+| Sign-in fails with `500` and *Origin … is not allowed by CORS* | An older backend treated a disallowed origin as a server error. Update and restart the API (`npm run dev` in `backend/`) — a rejected origin is now answered normally, without CORS headers |
+| The sign-in page greets you with *Your session has ended* before you have done anything | That is a token left over from an earlier visit. It is now discarded silently; reload the page with the current build |
 | Everything returns `429 Too Many Requests` | You exhausted the credential limiter (default: 20 failed attempts / 15 min). Wait, or raise `AUTH_RATE_LIMIT_MAX_ATTEMPTS` in `.env` |
 | `401 Invalid or expired token` immediately after signing in | `JWT_SECRET` changed between signing and verifying (e.g. the `.env` file was edited). Sign in again |
 | Protected pages report `Missing bearer token` right after a successful login | The browser refused to store the session token (sandboxed iframe, blocked cookies/storage, private mode). The client now keeps the token in memory, so this only appears if the session genuinely ended — check the browser console for a `SecurityError` and sign in again |

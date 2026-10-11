@@ -21,13 +21,29 @@ export default defineConfig({
     host: true, // listen on 0.0.0.0 so containers/VM previews can reach it
     port: 5173,
     strictPort: false,
+    /**
+     * Reflect the caller's origin in development.
+     *
+     * The dev server is reached both directly (localhost) and through the platform's preview
+     * iframe, whose host — and, for `sandbox="allow-scripts"`, whose whole origin — cannot be
+     * known in advance. Vite answers the CORS preflight itself, before the proxy sees it, so
+     * without this the browser's preflight for `POST /api/...` fails and no request is ever
+     * sent. This is a development-server setting only: the API keeps its own allow-list and
+     * still authorises every request by JWT.
+     */
+    cors: { origin: true, credentials: true },
     // Dev-only convenience: allow tunnel/preview host names (e.g. *.e2b.app) in addition to
     // localhost. Never relevant to a production build, which is served by a static host.
     allowedHosts: true,
     proxy: {
       '/api': {
         target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:4000',
+        // Rewrite Host to the API's own address …
         changeOrigin: true,
+        // … but tell the API which host the browser actually used, so it can recognise a
+        // request that is same-origin from the browser's point of view (preview hosts are not
+        // knowable in advance) and answer with the right CORS headers.
+        xfwd: true,
       },
     },
   },

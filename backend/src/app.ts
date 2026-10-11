@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import cors, { type CorsOptions } from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -16,6 +16,90 @@ import { apiLimiter } from './middleware/rateLimit';
  * The app is exported separately from the server bootstrap (`index.ts`) so the automated
  * test suite can drive the real HTTP stack with supertest without opening a port.
  */
+/**
+ * CORS policy.
+ *
+ * The web app is served from the Vite dev server (or a preview host) and calls the API with
+ * relative URLs, so the rules below have to accommodate three real cases:
+ *
+ *   1. **No `Origin` header** — curl, server-to-server calls and same-origin GETs. Always fine.
+ *   2. **Same origin as the request's own host** — the normal case for the dev server and for
+ *      a single-origin deployment behind a reverse proxy. Same-origin requests are not subject
+ *      to CORS at all, so allowing them cannot widen anything.
+ *   3. **A sandboxed preview iframe** — `sandbox="allow-scripts"` gives the document an opaque
+ *      origin, which browsers send as the literal `Origin: null`, and the preview hosts end in
+ *      `*.e2b.app`. Both are allowed in development only.
+ *
+ * A disallowed origin is answered **normally, just without `Access-Control-Allow-Origin`**, so
+ * the browser blocks the caller from reading the response. It is explicitly *not* an error:
+ * throwing here made the API return `500 Internal Server Error` to an ordinary browser request
+ * — including the sign-in POST, which the browser always sends with an `Origin` header. CORS is
+ * a browser read control, never an authentication mechanism; the JWT does that job.
+ */
+function corsOptionsFor(req: Request): CorsOptions {
+  return {
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (corsOrigins.includes(origin)) return callback(null, true);
+      if (isSameOrigin(origin, req)) return callback(null, true);
+      if (!isProduction && isDevelopmentOrigin(origin)) return callback(null, true);
+
+      // Not allowed: no CORS headers (the browser blocks the read), and no error (the request
+      // itself is answered normally).
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    maxAge: 600,
+  };
+}
+
+function safeHostname(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** `true` when the origin's host is the host this request was addressed to. */
+function isSameOrigin(origin: string, req: Request): boolean {
+  const originHost = safeHostname(origin);
+  if (!originHost) return false;
+
+  const candidates = [req.get('host'), req.get('x-forwarded-host')]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return candidates.some((candidate) => {
+    const host = candidate.replace(/:\d+$/, '');
+    return candidate === originHost || host === originHost;
+  });
+}
+
+/**
+ * Development origins: localhost, the platform's preview hosts, and the opaque origin
+ * (`null`) of a sandboxed preview iframe. Never applied in production, where only
+ * `CORS_ORIGINS` is honoured.
+ */
+function isDevelopmentOrigin(origin: string): boolean {
+  // A sandboxed iframe reports an opaque origin as the literal string "null".
+  if (origin === 'null') return true;
+
+  const hostname = safeHostname(origin);
+  if (!hostname) return false;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.e2b.app')
+  );
+}
+
 export function createApp(): Express {
   const app = express();
 
@@ -45,41 +129,7 @@ export function createApp(): Express {
   // ---------------------------------------------------------------------------
   // CORS — explicit allow-list, configurable per environment
   // ---------------------------------------------------------------------------
-  const corsOptions: CorsOptions = {
-    origin(origin, callback) {
-      // Requests without an Origin header (curl, server-to-server, same-origin proxies)
-      // are always allowed: CORS is a browser control, not an authentication mechanism.
-      if (!origin) return callback(null, true);
-
-      if (corsOrigins.includes(origin)) return callback(null, true);
-
-      if (!isProduction) {
-        // Developer convenience for local tooling and sandbox preview hosts. Never enabled
-        // in production, where only CORS_ORIGINS is honoured.
-        try {
-          const hostname = new URL(origin).hostname;
-          if (
-            hostname === 'localhost' ||
-            hostname === '127.0.0.1' ||
-            hostname.endsWith('.localhost') ||
-            hostname.endsWith('.e2b.app')
-          ) {
-            return callback(null, true);
-          }
-        } catch {
-          /* fall through to rejection */
-        }
-      }
-
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
-    maxAge: 600,
-  };
-
-  app.use(cors(corsOptions));
+  app.use(cors((req, callback) => callback(null, corsOptionsFor(req))));
 
   // ---------------------------------------------------------------------------
   // Request parsing & logging

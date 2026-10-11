@@ -30,6 +30,9 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     setFieldErrors({});
+    // A notice about a previous session is stale the moment a new attempt starts, whether or
+    // not this attempt succeeds.
+    if (sessionNotice) clearSessionNotice();
 
     try {
       await login(email.trim(), password);
