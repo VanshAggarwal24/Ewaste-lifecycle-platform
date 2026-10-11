@@ -64,7 +64,7 @@ schema production runs against.
 | Convention | Detail |
 |------------|--------|
 | Primary keys | Surrogate `SERIAL` integers, named `id`. Referenced by `pickup_request_id`, `item_id`, … |
-| Business identifiers | Human-readable codes (`ITM-2026-01004`, `PR-2026-01002`, `BATCH-2026-01001`, `CTR-CHN`, `CAT-BATTERY`) generated from PostgreSQL sequences, never from `MAX(id)+1` |
+| Business identifiers | Human-readable codes (`ITM-2026-01004`, `PR-2026-01002`, `BAT-2026-01001`, `CC-CHN-01`, `laptops-computers`) generated from PostgreSQL sequences, never from `MAX(id)+1` |
 | Money and weight | `NUMERIC(12,3)` for weights in kilograms (gram resolution), `NUMERIC(12,2)` for prices, `NUMERIC(8,2)` for capacity |
 | Timestamps | `TIMESTAMPTZ(3)` everywhere; `created_at DEFAULT CURRENT_TIMESTAMP`, `updated_at` maintained by Prisma |
 | Text | `VARCHAR(n)` with explicit limits so clients cannot store unbounded strings |
@@ -433,7 +433,7 @@ never-reused identifier.
 |----------|--------|---------|
 | `ewaste_item_code_seq` | `ITM-<year>-<5 digits>` | `ITM-2026-01004` |
 | `pickup_request_code_seq` | `PR-<year>-<5 digits>` | `PR-2026-01002` |
-| `processing_batch_code_seq` | `BATCH-<year>-<5 digits>` | `BATCH-2026-01001` |
+| `processing_batch_code_seq` | `BAT-<year>-<5 digits>` | `BAT-2026-01001` |
 
 Sequences start at 1001 to keep early demo data readable. Centre codes and category slugs are
 supplied by the administrator (`CC-CHN-01`, `laptops-computers`) and are unique by constraint.
