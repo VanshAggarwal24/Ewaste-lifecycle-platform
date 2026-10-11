@@ -1,0 +1,64 @@
+# =============================================================================
+#  EcoCycle — repository-wide ignore rules
+#  The per-package .gitignore files add language specifics; this covers the
+#  monorepo root. Nothing that contains a real secret may ever be committed:
+#  every environment file is ignored, only the *.example templates are tracked.
+# =============================================================================
+
+# --- Dependencies -------------------------------------------------------------
+node_modules/
+.pnp/
+.pnp.js
+jspm_packages/
+
+# --- Build output -------------------------------------------------------------
+dist/
+build/
+out/
+*.tsbuildinfo
+.next/
+.vite/
+.turbo/
+
+# --- Environment (NEVER commit real values) -----------------------------------
+.env
+.env.*
+!.env.example
+*.env
+!.env.example
+
+# --- Logs and caches ----------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.cache/
+.parcel-cache/
+coverage/
+.nyc_output/
+.eslintcache
+
+# --- Databases (local dumps and SQLite leftovers) -----------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+pgdump*.sql
+
+# --- Editors and OS -----------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Test / tooling scratch ---------------------------------------------------
+/tmp/
+scratch/
+*.tmp

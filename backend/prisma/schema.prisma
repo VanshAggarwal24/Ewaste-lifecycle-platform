@@ -1,0 +1,552 @@
+// =====================================================================================
+//  EcoCycle — E-Waste Lifecycle Management Platform
+//  Prisma schema  (PostgreSQL)
+// =====================================================================================
+//  Design notes
+//  ------------
+//  * 13 entities modelled in 3NF. Every table uses a surrogate integer primary key and
+//    business codes (item_code, batch_code, request_code) for human-facing references.
+//  * Referential actions are chosen deliberately:
+//      - CASCADE   : child rows that have no meaning without the parent (history,
+//                    inspections, batch items, profile extensions).
+//      - SET NULL  : optional context that must survive a deletion (assigned agent,
+//                    actor of a historical event, centre on a legacy request).
+//      - RESTRICT  : records that form the audit trail of a real transaction
+//                    (a user with submissions, an item already inside a batch).
+//  * Declaration-ordered enums are used for the lifecycle state machines; illegal
+//    transitions are rejected in the service layer *and* duplicate-prevention is
+//    additionally enforced by the database (unique constraints) — see docs/ER_DIAGRAM.md.
+//  * Additional CHECK constraints that Prisma's DSL cannot express (numeric ranges,
+//    weight positivity, "exactly one parent" on status_history) are added in the
+//    versioned migration, see prisma/migrations/*/migration.sql.
+// =====================================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------------------------------
+// Enums
+// -------------------------------------------------------------------------------------
+
+/// Platform roles. PUBLIC REGISTRATION MAY ONLY EVER CREATE `USER`.
+/// COLLECTION_AGENT / CENTER_STAFF / RECYCLER / ADMIN are granted by an administrator
+/// or by the controlled seed process.
+enum Role {
+  USER
+  COLLECTION_AGENT
+  CENTER_STAFF
+  RECYCLER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CenterStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+/// Lifecycle of a scheduled pickup.
+enum PickupStatus {
+  REQUESTED
+  ASSIGNED
+  ACCEPTED
+  COLLECTED
+  RECEIVED_AT_CENTER
+  FAILED
+  CANCELLED
+}
+
+/// Lifecycle of a single piece of e-waste.
+enum ItemStatus {
+  SUBMITTED
+  PICKUP_SCHEDULED
+  COLLECTED
+  RECEIVED_AT_CENTER
+  INSPECTED
+  IN_BATCH
+  PROCESSING
+  RECYCLED
+  REJECTED
+  CANCELLED
+}
+
+enum ItemCondition {
+  WORKING
+  REPAIRABLE
+  FAULTY
+  SEVERELY_DAMAGED
+}
+
+/// Quality grade assigned during inspection; `qualityScore` holds the 0-100 measurement.
+enum QualityGrade {
+  A
+  B
+  C
+  D
+}
+
+/// Routing decision made by the centre after inspection.
+enum ProcessingPath {
+  REFURBISHMENT
+  COMPONENT_RECOVERY
+  MATERIAL_RECOVERY
+  DISPOSAL
+}
+
+enum BatchStatus {
+  DRAFT
+  READY
+  RELEASED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MaterialType {
+  COPPER
+  ALUMINIUM
+  STEEL
+  GOLD
+  SILVER
+  PALLADIUM
+  PLASTIC
+  GLASS
+  BATTERY_CHEMICALS
+  RARE_EARTH
+  OTHER
+}
+
+/// Which lifecycle stream a history row describes (exactly one FK is populated).
+enum LifecycleEntity {
+  PICKUP_REQUEST
+  EWASTE_ITEM
+  PROCESSING_BATCH
+}
+
+enum AssignmentMethod {
+  AUTO
+  MANUAL
+  REASSIGNMENT
+}
+
+enum AssignmentOutcome {
+  ASSIGNED
+  NO_ELIGIBLE_AGENT
+  SKIPPED
+}
+
+// -------------------------------------------------------------------------------------
+// Identity
+// -------------------------------------------------------------------------------------
+
+model User {
+  id           Int        @id @default(autoincrement())
+  email        String     @unique @db.VarChar(255) // normalised to lower-case by the API
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  fullName     String     @map("full_name") @db.VarChar(120)
+  phone        String?    @db.VarChar(20)
+  role         Role       @default(USER)
+  status       UserStatus @default(ACTIVE)
+
+  // Default address — used as the pickup origin and as the geocoding fallback.
+  addressLine String?  @map("address_line") @db.VarChar(255)
+  city        String?  @db.VarChar(80)
+  state       String?  @db.VarChar(80)
+  pincode     String?  @db.VarChar(12)
+  latitude    Decimal? @db.Decimal(10, 7)
+  longitude   Decimal? @db.Decimal(10, 7)
+
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  agentProfile    AgentProfile?
+  recyclerProfile RecyclerProfile?
+
+  // A CENTER_STAFF member is attached to exactly one collection centre.
+  staffedCenterId Int?             @map("staffed_center_id")
+  staffedCenter   CollectionCenter? @relation("CenterStaff", fields: [staffedCenterId], references: [id], onDelete: SetNull)
+
+  submittedRequests PickupRequest[] @relation("RequesterPickups")
+  submittedItems    EwasteItem[]    @relation("ItemOwner")
+
+  historyEvents StatusHistory[] @relation("HistoryActor")
+  assignmentLogs AssignmentLog[]
+  inspections    Inspection[]    @relation("Inspector")
+  batchesAsRecycler ProcessingBatch[] @relation("BatchRecycler")
+  batchesCreated    ProcessingBatch[] @relation("BatchCreator")
+  recoveryRecords   RecoveredMaterial[] @relation("RecoveryRecorder")
+
+  @@index([role, status])
+  @@index([city])
+  @@map("users")
+}
+
+/// Extra attributes of a COLLECTION_AGENT. 1:1 extension of users (XOR enforced by CHECK).
+model AgentProfile {
+  id              Int     @id @default(autoincrement())
+  userId          Int     @unique @map("user_id")
+  centerId        Int?    @map("center_id") // home collection centre
+  vehicleType     String? @map("vehicle_type") @db.VarChar(40)
+  vehicleCapacityKg Decimal @default(50) @map("vehicle_capacity_kg") @db.Decimal(8, 2)
+  isAvailable     Boolean @default(true) @map("is_available")
+  isVerified      Boolean @default(false) @map("is_verified")
+  currentLoadCount Int    @default(0) @map("current_load_count") // open pickups, maintained transactionally
+  maxDailyPickups Int     @default(10) @map("max_daily_pickups")
+  ratingAvg       Decimal @default(0) @map("rating_avg") @db.Decimal(3, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  center CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  assignedRequests PickupRequest[] @relation("PickupAssignedAgent")
+  assignmentLogs   AssignmentLog[]
+
+  @@index([centerId, isAvailable])
+  @@index([isAvailable, currentLoadCount])
+  @@map("agent_profiles")
+}
+
+/// Extra attributes of a RECYCLER organisation.
+model RecyclerProfile {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique @map("user_id")
+  organizationName  String   @map("organization_name") @db.VarChar(160)
+  licenseNumber     String   @unique @map("license_number") @db.VarChar(60)
+  acceptedMaterials MaterialType[] @map("accepted_materials")
+  maxCapacityKg     Decimal  @default(1000) @map("max_capacity_kg") @db.Decimal(10, 2)
+  isActive          Boolean  @default(true) @map("is_active")
+  contactPhone      String?  @map("contact_phone") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+  @@map("recycler_profiles")
+}
+
+// -------------------------------------------------------------------------------------
+// Reference data
+// -------------------------------------------------------------------------------------
+
+model CollectionCenter {
+  id           Int          @id @default(autoincrement())
+  name         String       @db.VarChar(160)
+  code         String       @unique @db.VarChar(20)
+  addressLine  String       @map("address_line") @db.VarChar(255)
+  city         String       @db.VarChar(80)
+  state        String       @db.VarChar(80)
+  pincode      String       @db.VarChar(12)
+  latitude     Decimal?     @db.Decimal(10, 7)
+  longitude    Decimal?     @db.Decimal(10, 7)
+  phone        String?      @db.VarChar(20)
+  email        String?      @db.VarChar(255)
+  capacityKg   Decimal      @default(5000) @map("capacity_kg") @db.Decimal(12, 2)
+  status       CenterStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  staff          User[]           @relation("CenterStaff")
+  agents         AgentProfile[]
+  requests       PickupRequest[]
+  items          EwasteItem[]
+  inspections    Inspection[]
+  batches        ProcessingBatch[]
+
+  @@index([status, city])
+  @@map("collection_centers")
+}
+
+model Category {
+  id                Int      @id @default(autoincrement())
+  name              String   @unique @db.VarChar(80)
+  slug              String   @unique @db.VarChar(80)
+  description       String?  @db.VarChar(400)
+  hazardLevel       Int      @default(1) @map("hazard_level") // 1 low .. 5 severe
+  defaultPath       ProcessingPath @default(MATERIAL_RECOVERY) @map("default_path")
+  isActive          Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  items    EwasteItem[]
+  requests PickupRequest[]
+
+  @@index([isActive])
+  @@map("categories")
+}
+
+// -------------------------------------------------------------------------------------
+// Collection workflow
+// -------------------------------------------------------------------------------------
+
+model PickupRequest {
+  id          Int          @id @default(autoincrement())
+  requestCode String       @unique @map("request_code") @db.VarChar(30)
+
+  userId   Int  @map("user_id")
+  agentId  Int? @map("agent_id")  // users.id (role COLLECTION_AGENT)
+  centerId Int? @map("center_id")
+  categoryId Int? @map("category_id")
+
+  status PickupStatus @default(REQUESTED)
+
+  // Pickup address (snapshot — the user may later change their profile address).
+  addressLine String  @map("address_line") @db.VarChar(255)
+  city        String  @db.VarChar(80)
+  state       String  @db.VarChar(80)
+  pincode     String  @db.VarChar(12)
+  latitude    Decimal? @db.Decimal(10, 7)
+  longitude   Decimal? @db.Decimal(10, 7)
+
+  preferredDate DateTime  @map("preferred_date") @db.Date
+  timeSlot      String?   @map("time_slot") @db.VarChar(40)
+  notes         String?   @db.VarChar(500)
+  estimatedWeightKg Decimal? @map("estimated_weight_kg") @db.Decimal(10, 3)
+
+  // Assignment bookkeeping
+  assignedAt  DateTime? @map("assigned_at") @db.Timestamptz(3)
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(3)
+  collectedAt DateTime? @map("collected_at") @db.Timestamptz(3)
+  receivedAt  DateTime? @map("received_at") @db.Timestamptz(3)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  failureReason String? @map("failure_reason") @db.VarChar(400)
+  collectedWeightKg Decimal? @map("collected_weight_kg") @db.Decimal(10, 3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user     User             @relation("RequesterPickups", fields: [userId], references: [id], onDelete: Restrict)
+  agent    AgentProfile?    @relation("PickupAssignedAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  center   CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  category Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  items          EwasteItem[]
+  history        StatusHistory[]
+  assignmentLogs AssignmentLog[]
+
+  @@index([status, preferredDate])
+  @@index([userId, status])
+  @@index([agentId, status])
+  @@index([centerId, status])
+  @@map("pickup_requests")
+}
+
+model EwasteItem {
+  id       Int    @id @default(autoincrement())
+  itemCode String @unique @map("item_code") @db.VarChar(30)
+
+  userId          Int  @map("user_id")
+  pickupRequestId Int? @map("pickup_request_id")
+  categoryId      Int  @map("category_id")
+  centerId        Int? @map("center_id") // physically located here after receipt
+
+  name        String  @db.VarChar(160)
+  brand       String? @db.VarChar(80)
+  modelNumber String? @map("model_number") @db.VarChar(80)
+  serialNumber String? @map("serial_number") @db.VarChar(80)
+  description String? @db.VarChar(600)
+  quantity    Int     @default(1)
+  estimatedWeightKg Decimal? @map("estimated_weight_kg") @db.Decimal(10, 3)
+
+  status ItemStatus @default(SUBMITTED)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User             @relation("ItemOwner", fields: [userId], references: [id], onDelete: Restrict)
+  pickupRequest PickupRequest?   @relation(fields: [pickupRequestId], references: [id], onDelete: SetNull)
+  category      Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  center        CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+
+  inspection   Inspection?
+  batchItem    BatchItem?
+  history      StatusHistory[]
+  recoveredMaterials RecoveredMaterial[] @relation("ItemRecoveries")
+
+  @@index([userId, status])
+  @@index([pickupRequestId])
+  @@index([status, centerId])
+  @@index([categoryId])
+  @@map("ewaste_items")
+}
+
+/// Append-only audit trail. Exactly one of pickupRequestId / itemId / batchId is set
+/// (enforced by a CHECK constraint in the migration).
+model StatusHistory {
+  id         Int              @id @default(autoincrement())
+  entityType LifecycleEntity  @map("entity_type")
+
+  pickupRequestId Int? @map("pickup_request_id")
+  itemId          Int? @map("item_id")
+  batchId         Int? @map("batch_id")
+
+  status    String  @db.VarChar(40)
+  note      String? @db.VarChar(500)
+  actorId   Int?    @map("actor_id")
+  actorRole Role?   @map("actor_role")
+  metadata  Json?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  pickupRequest PickupRequest?  @relation(fields: [pickupRequestId], references: [id], onDelete: Cascade)
+  item          EwasteItem?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  batch         ProcessingBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  actor         User?           @relation("HistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, itemId, createdAt])
+  @@index([entityType, pickupRequestId, createdAt])
+  @@index([entityType, batchId, createdAt])
+  @@map("status_history")
+}
+
+/// Audit of every assignment decision produced by the rule-based engine.
+model AssignmentLog {
+  id              Int              @id @default(autoincrement())
+  pickupRequestId Int              @map("pickup_request_id")
+  agentId         Int?             @map("agent_id")
+  assignedById    Int?             @map("assigned_by_id")
+  method          AssignmentMethod @default(AUTO)
+  outcome         AssignmentOutcome @default(ASSIGNED)
+  score           Decimal?         @db.Decimal(8, 4)
+  distanceKm      Decimal?         @map("distance_km") @db.Decimal(8, 2)
+  reason          String           @db.VarChar(600)
+  candidates      Json?            // top-N scored candidates for explainability
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  pickupRequest PickupRequest @relation(fields: [pickupRequestId], references: [id], onDelete: Cascade)
+  agent         AgentProfile? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  assignedBy    User?         @relation(fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([pickupRequestId])
+  @@index([agentId, createdAt])
+  @@map("assignment_logs")
+}
+
+/// Outcome of the centre inspection. One inspection per item (unique itemId).
+model Inspection {
+  id     Int    @id @default(autoincrement())
+  itemId Int    @unique @map("item_id")
+  centerId Int? @map("center_id")
+  inspectedById Int? @map("inspected_by_id")
+
+  condition      ItemCondition  @default(FAULTY)
+  qualityScore   Int            @map("quality_score") // 0..100 (CHECK in migration)
+  qualityGrade   QualityGrade   @map("quality_grade")
+  processingPath ProcessingPath @map("processing_path")
+  actualWeightKg Decimal        @map("actual_weight_kg") @db.Decimal(10, 3)
+  isRepairable   Boolean        @default(false) @map("is_repairable")
+  hazardFlag     Boolean        @default(false) @map("hazard_flag")
+  dataWipeRequired Boolean      @default(true) @map("data_wipe_required")
+  dataWipeDone   Boolean        @default(false) @map("data_wipe_done")
+  remarks        String?        @db.VarChar(600)
+
+  inspectedAt DateTime @default(now()) @map("inspected_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  item        EwasteItem        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  center      CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  inspectedBy User?             @relation("Inspector", fields: [inspectedById], references: [id], onDelete: SetNull)
+
+  @@index([centerId, inspectedAt])
+  @@index([processingPath])
+  @@map("inspections")
+}
+
+// -------------------------------------------------------------------------------------
+// Recycling workflow
+// -------------------------------------------------------------------------------------
+
+model ProcessingBatch {
+  id        Int         @id @default(autoincrement())
+  batchCode String      @unique @map("batch_code") @db.VarChar(30)
+
+  centerId   Int  @map("center_id")
+  recyclerId Int? @map("recycler_id") // users.id (role RECYCLER)
+  createdById Int? @map("created_by_id")
+
+  name        String  @db.VarChar(160)
+  status      BatchStatus @default(DRAFT)
+  processingPath ProcessingPath? @map("processing_path")
+  targetWeightKg Decimal? @map("target_weight_kg") @db.Decimal(12, 3)
+  actualWeightKg Decimal? @map("actual_weight_kg") @db.Decimal(12, 3)
+
+  releasedAt  DateTime? @map("released_at") @db.Timestamptz(3)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  notes       String?   @db.VarChar(800)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  center      CollectionCenter @relation(fields: [centerId], references: [id], onDelete: Restrict)
+  recycler    User?            @relation("BatchRecycler", fields: [recyclerId], references: [id], onDelete: SetNull)
+  createdBy   User?            @relation("BatchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  batchItems BatchItem[]
+  recoveredMaterials RecoveredMaterial[]
+  history StatusHistory[]
+
+  @@index([status, centerId])
+  @@index([recyclerId, status])
+  @@map("processing_batches")
+}
+
+/// Membership of an item inside a batch.
+/// `itemId` is UNIQUE: an item can never be added to two batches (duplicate processing).
+model BatchItem {
+  id      Int @id @default(autoincrement())
+  batchId Int @map("batch_id")
+  itemId  Int @unique @map("item_id")
+  addedById Int? @map("added_by_id")
+
+  weightAtAdditionKg Decimal? @map("weight_at_addition_kg") @db.Decimal(10, 3)
+  addedAt DateTime @default(now()) @map("added_at") @db.Timestamptz(3)
+
+  batch ProcessingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  item  EwasteItem      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([batchId])
+  @@map("batch_items")
+}
+
+/// Material recovery recorded by a recycler for a completed/in-progress batch.
+/// UNIQUE(batchId, materialType) prevents a duplicate recovery line per material.
+model RecoveredMaterial {
+  id      Int @id @default(autoincrement())
+  batchId Int @map("batch_id")
+  itemId  Int? @map("item_id") // optional item-level attribution
+  recordedById Int? @map("recorded_by_id")
+
+  materialType MaterialType @map("material_type")
+  quantityKg   Decimal      @map("quantity_kg") @db.Decimal(12, 3)
+  unit         String       @default("KG") @db.VarChar(10)
+  purityPct    Decimal?     @map("purity_pct") @db.Decimal(5, 2)
+  marketValuePerKg Decimal? @map("market_value_per_kg") @db.Decimal(12, 2)
+  notes        String?      @db.VarChar(500)
+  recordedAt   DateTime     @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  batch ProcessingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  item  EwasteItem?     @relation("ItemRecoveries", fields: [itemId], references: [id], onDelete: SetNull)
+  recordedBy User?      @relation("RecoveryRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([batchId, materialType])
+  @@index([materialType, recordedAt])
+  @@index([batchId])
+  @@map("recovered_materials")
+}
