@@ -99,6 +99,14 @@ export function BatchDetailPage() {
     itemId: '',
     notes: '',
   });
+  const [recoveryEditTarget, setRecoveryEditTarget] = useState<RecoveredMaterial | null>(null);
+  const [recoveryEditForm, setRecoveryEditForm] = useState({
+    quantityKg: '',
+    purityPct: '',
+    marketValuePerKg: '',
+    notes: '',
+  });
+  const [recoveryDeleteTarget, setRecoveryDeleteTarget] = useState<RecoveredMaterial | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', processingPath: '', targetWeightKg: '', notes: '' });
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -164,6 +172,19 @@ export function BatchDetailPage() {
   const recoveryDeleteAction = useAction((id: number) => recoveryApi.remove(id), {
     onError: (caught) => toast.failure(caught, 'Could not delete the recovery record'),
   });
+
+  /** Opens the edit dialog pre-filled with the recorded values. */
+  const openRecoveryEdit = (recovery: RecoveredMaterial) => {
+    setFormError(null);
+    setFieldErrors({});
+    setRecoveryEditForm({
+      quantityKg: String(recovery.quantityKg),
+      purityPct: recovery.purityPct === null ? '' : String(recovery.purityPct),
+      marketValuePerKg: recovery.marketValuePerKg === null ? '' : String(recovery.marketValuePerKg),
+      notes: recovery.notes ?? '',
+    });
+    setRecoveryEditTarget(recovery);
+  };
 
   if (loading) return <LoadingBlock label="Loading batch…" />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
@@ -446,45 +467,14 @@ export function BatchDetailPage() {
                   {user?.role === 'ADMIN' || user?.role === 'RECYCLER' ? (
                     <Td align="right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={async () => {
-                            const next = window.prompt(
-                              'New quantity in kg',
-                              String(recovery.quantityKg),
-                            );
-                            if (!next) return;
-                            const parsed = Number(next);
-                            if (!Number.isFinite(parsed) || parsed <= 0) {
-                              toast.failure(new Error('Quantity must be a positive number'));
-                              return;
-                            }
-                            const result = await recoveryUpdateAction.run({
-                              id: recovery.id,
-                              body: { quantityKg: parsed },
-                            });
-                            if (result) {
-                              toast.success('Recovery record updated');
-                              reload();
-                              reloadRecoveries();
-                            }
-                          }}
-                        >
+                        <Button size="sm" variant="ghost" onClick={() => openRecoveryEdit(recovery)}>
                           Edit
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           icon={<Trash2 className="h-3.5 w-3.5" />}
-                          onClick={async () => {
-                            const result = await recoveryDeleteAction.run(recovery.id);
-                            if (result !== null) {
-                              toast.success('Recovery record deleted');
-                              reload();
-                              reloadRecoveries();
-                            }
-                          }}
+                          onClick={() => setRecoveryDeleteTarget(recovery)}
                         >
                           Delete
                         </Button>
@@ -953,6 +943,143 @@ export function BatchDetailPage() {
           if (!removeItemTarget) return;
           const result = await removeItemAction.run(removeItemTarget.id);
           if (result) setRemoveItemTarget(null);
+        }}
+      />
+
+      <Modal
+        open={Boolean(recoveryEditTarget)}
+        onClose={() => setRecoveryEditTarget(null)}
+        title="Edit recovery record"
+        description={
+          recoveryEditTarget
+            ? `${MATERIAL_LABELS[recoveryEditTarget.materialType] ?? humanize(recoveryEditTarget.materialType)} — first recorded ${formatDateTime(recoveryEditTarget.recordedAt)}`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRecoveryEditTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              loading={recoveryUpdateAction.running}
+              onClick={async () => {
+                if (!recoveryEditTarget) return;
+                const quantity = Number(recoveryEditForm.quantityKg);
+                if (!recoveryEditForm.quantityKg.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+                  setFormError(new Error('Quantity must be a positive number of kilograms'));
+                  return;
+                }
+                const purity = recoveryEditForm.purityPct.trim() ? Number(recoveryEditForm.purityPct) : null;
+                if (purity !== null && (!Number.isFinite(purity) || purity <= 0 || purity > 100)) {
+                  setFormError(new Error('Purity must be greater than 0 and at most 100 per cent'));
+                  return;
+                }
+                const marketValue = recoveryEditForm.marketValuePerKg.trim()
+                  ? Number(recoveryEditForm.marketValuePerKg)
+                  : null;
+                if (marketValue !== null && (!Number.isFinite(marketValue) || marketValue < 0)) {
+                  setFormError(new Error('Market value cannot be negative'));
+                  return;
+                }
+                setFormError(null);
+                setFieldErrors({});
+                const result = await recoveryUpdateAction.run({
+                  id: recoveryEditTarget.id,
+                  body: {
+                    quantityKg: quantity,
+                    purityPct: purity,
+                    marketValuePerKg: marketValue,
+                    notes: recoveryEditForm.notes.trim() ? recoveryEditForm.notes.trim() : null,
+                  },
+                });
+                if (result) {
+                  toast.success('Recovery record updated');
+                  setRecoveryEditTarget(null);
+                  reload();
+                  reloadRecoveries();
+                  reloadTimeline();
+                }
+              }}
+            >
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {formError ? <InlineError error={formError} /> : null}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <TextField
+              label="Quantity (kg)"
+              name="recoveryEditQuantity"
+              type="number"
+              step="0.001"
+              min="0"
+              required
+              value={recoveryEditForm.quantityKg}
+              error={fieldErrors.quantityKg}
+              onChange={(event) => setRecoveryEditForm((f) => ({ ...f, quantityKg: event.target.value }))}
+            />
+            <TextField
+              label="Purity (%)"
+              name="recoveryEditPurity"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              hint="Leave empty if not assayed"
+              value={recoveryEditForm.purityPct}
+              error={fieldErrors.purityPct}
+              onChange={(event) => setRecoveryEditForm((f) => ({ ...f, purityPct: event.target.value }))}
+            />
+            <TextField
+              label="Market value (per kg)"
+              name="recoveryEditValue"
+              type="number"
+              step="0.01"
+              min="0"
+              hint="In rupees"
+              value={recoveryEditForm.marketValuePerKg}
+              error={fieldErrors.marketValuePerKg}
+              onChange={(event) => setRecoveryEditForm((f) => ({ ...f, marketValuePerKg: event.target.value }))}
+            />
+          </div>
+          <TextAreaField
+            label="Notes"
+            name="recoveryEditNotes"
+            rows={3}
+            value={recoveryEditForm.notes}
+            error={fieldErrors.notes}
+            onChange={(event) => setRecoveryEditForm((f) => ({ ...f, notes: event.target.value }))}
+          />
+          <p className="text-xs text-slate-500">
+            The change is written to the batch&rsquo;s status history, so the correction stays visible in the audit
+            trail.
+          </p>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(recoveryDeleteTarget)}
+        onClose={() => setRecoveryDeleteTarget(null)}
+        busy={recoveryDeleteAction.running}
+        title="Delete this recovery record?"
+        message={
+          recoveryDeleteTarget
+            ? `${formatKg(recoveryDeleteTarget.quantityKg)} of ${(MATERIAL_LABELS[recoveryDeleteTarget.materialType] ?? humanize(recoveryDeleteTarget.materialType)).toLowerCase()} will be removed from this batch's recovery total.`
+            : ''
+        }
+        confirmLabel="Delete recovery"
+        onConfirm={async () => {
+          if (!recoveryDeleteTarget) return;
+          const result = await recoveryDeleteAction.run(recoveryDeleteTarget.id);
+          if (result !== null) {
+            toast.success('Recovery record deleted');
+            setRecoveryDeleteTarget(null);
+            reload();
+            reloadRecoveries();
+            reloadTimeline();
+          }
         }}
       />
 
