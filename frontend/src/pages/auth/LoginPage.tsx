@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogIn } from 'lucide-react';
+import { Info, LogIn } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/context/AuthContext';
 import { ROLE_HOME } from '@/lib/domain';
@@ -13,7 +13,7 @@ import { DemoAccountsPanel } from './DemoAccountsPanel';
  * to whichever protected page they were trying to open).
  */
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, sessionNotice, clearSessionNotice, canPersistSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const redirectTo = (location.state as { from?: string } | null)?.from;
@@ -56,6 +56,16 @@ export function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {sessionNotice ? (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>{sessionNotice}</span>
+          </div>
+        ) : null}
+
         <InlineError error={error} />
 
         <TextField
@@ -66,7 +76,12 @@ export function LoginPage() {
           required
           value={email}
           error={fieldErrors.email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            // The "session ended" notice is about the previous attempt; drop it once the
+            // visitor starts typing again.
+            if (sessionNotice) clearSessionNotice();
+          }}
           placeholder="you@example.com"
         />
 
@@ -81,6 +96,16 @@ export function LoginPage() {
           onChange={(event) => setPassword(event.target.value)}
           placeholder="••••••••"
         />
+
+        {!canPersistSession ? (
+          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              This browser context blocks Web Storage, so the session is kept in memory only and a page reload asks
+              you to sign in again. Everything else works normally.
+            </span>
+          </p>
+        ) : null}
 
         <Button type="submit" fullWidth size="lg" loading={busy} icon={<LogIn className="h-4 w-4" />}>
           Sign in

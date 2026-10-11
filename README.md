@@ -224,6 +224,10 @@ ecocycle/
 │  ├─ .env.example                  # every setting, placeholders only
 │  └─ package.json
 ├─ frontend/                        # React 19 + Vite 6 + Tailwind 4 SPA
+│  ├─ tests/                       # Vitest regression suite (hermetic) + live smoke test
+│  ├─ vitest.config.ts             # jsdom test environment, `@` alias
+│  ├─ vitest.live.config.ts        # config for the on-demand live smoke run
+│  ├─ tsconfig.test.json           # typecheck project for src + tests
 │  ├─ src/
 │  │  ├─ api/                       # typed client + one function per endpoint + shared types
 │  │  ├─ components/                # ui primitives, charts, timeline, layout, route guards
@@ -462,9 +466,11 @@ returns the API's own explanation, and the UI shows it verbatim.
 
 ## Automated tests
 
+### Backend — 10 suites, 226 tests
+
 ```powershell
 cd backend
-npm test                 # everything: 10 suites, 225 tests
+npm test                 # everything
 npm run test:unit        # 4 suites (status machine, assignment maths, security helpers, inspection)
 npm run test:integration # 6 suites (lifecycle, auth, authorization, guards, admin, rate limiting)
 npm run test:coverage    # with a coverage report
@@ -474,7 +480,7 @@ Verified on this repository:
 
 ```
 Test Suites: 10 passed, 10 total
-Tests:       225 passed, 225 total
+Tests:       226 passed, 226 total
 ```
 
 | Suite | Tests | Covers |
@@ -484,7 +490,7 @@ Tests:       225 passed, 225 total
 | `unit/security.test.ts` | 25 | password hashing and policy, JWT signing/verification and tampering, bearer extraction, geospatial helpers, response serialisation |
 | `unit/inspection.test.ts` | 17 | quality grading bands, processing-path suggestions, business-identifier generation, pagination and query helpers |
 | `integration/lifecycle.test.ts` | 17 | the full path from submission to completed recycling, asserting persisted rows after every step |
-| `integration/auth.test.ts` | 30 | registration (including role injection and case-insensitive emails), login, suspension, token handling, profile self-service |
+| `integration/auth.test.ts` | 31 | registration (including role injection and case-insensitive emails), login, suspension, token handling, profile self-service, and the login → authenticated-call contract |
 | `integration/authorization.test.ts` | 37 | the unauthenticated wall, record-level ownership, role gates, per-role data scoping, input hardening |
 | `integration/guards.test.ts` | 25 | duplicate prevention, illegal transitions, assignment edge cases, cancellation semantics, agent failure paths |
 | `integration/admin.test.ts` | 29 | privileged account creation, user/centre/category management, analytics that agree with raw SQL, profile summaries |
@@ -494,6 +500,25 @@ The integration suites run against a **separate database** (`TEST_DATABASE_URL`)
 `tests/helpers/globalSetup.ts` migrates automatically; each test file truncates and re-seeds
 its own fixtures. Your development data is never touched, and the helper refuses to run if
 `TEST_DATABASE_URL` is missing or identical to `DATABASE_URL`.
+
+### Frontend — 13 hermetic tests + 3 live smoke tests
+
+```powershell
+cd frontend
+npm test          # Vitest + jsdom: session storage, login, guards, refresh, expired tokens
+npm run test:live # against a running stack (needs backend on :4000 and `npm run dev` here)
+npm run typecheck # app, node and test TypeScript projects
+```
+
+| File | Tests | Covers |
+|------|------:|--------|
+| `tests/auth.client.test.ts` | 6 | the token is attached to every request, including when `window.localStorage` throws (`SecurityError`) as it does in a sandboxed iframe; the header is omitted only when there is genuinely no session |
+| `tests/auth.flow.test.tsx` | 7 | sign-in → protected request carries the token; a blocked-storage sign-in never lands on "Missing bearer token"; a reload with a persisted token restores the session through `/auth/me`; an expired token returns the visitor to `/login`; the guard stops anonymous visitors without calling the API |
+| `tests/live/auth.live.ts` | 3 | the same flows driven against the **real** API through the dev-server proxy, with Web Storage blocked — it fails with `Missing bearer token` against an unfixed client, which is exactly the regression it guards |
+
+The live suite is excluded from `npm test` so the default run stays hermetic and CI-safe; it
+is meant to be run while the two dev servers are up, and it can be pointed at another host with
+`ECOCYCLE_API_URL`.
 
 ---
 
@@ -561,6 +586,13 @@ candidate table — useful for demonstrating the algorithm without changing data
   secret comes from the environment; production refuses to start with a short one. The token is
   verified on every request and the user is re-read from the database, so suspension takes
   effect immediately.
+* **Token storage in the browser** — the token is held in memory for the life of the page and
+  mirrored to `localStorage` when the browser permits it, so a reload restores the session.
+  Memory is the source of truth because sandboxed iframes (the `sandbox` attribute without
+  `allow-same-origin`), Safari private mode and some embedded webviews throw on any Web Storage
+  access; the client keeps working there and simply cannot survive a reload, which the login
+  screen states. A `401` on any request other than the credential endpoints drops the session
+  and returns the visitor to `/login` with an explanation.
 * **Authorization** — `requireRole(...)` per route plus per-record ownership filters inside the
   queries themselves, so a citizen cannot read another citizen's item even by guessing its id
   (such lookups return `404`, not `403`, to avoid leaking existence).
@@ -634,11 +666,12 @@ user management with privileged-role creation and role-specific profile blocks; 
 directory editing the exact inputs of the assignment engine; centre CRUD with per-centre
 statistics; category CRUD; cross-centre pickup and batch views; scoped activity feed.
 
-**Platform-wide** — JWT auth with role and ownership enforcement; Zod validation on both sides;
-central error handling with typed error codes; rate limiting; rate-limit and error states in
-the UI; responsive, accessible layout with loading/empty/error states everywhere; charts from
-Recharts fed only by API aggregates; 10 automated backend suites (225 tests) covering the
-lifecycle end to end.
+**Platform-wide** — JWT auth with role and ownership enforcement, token kept in memory and
+persisted when the browser allows it; Zod validation on both sides; central error handling with
+typed error codes; rate limiting; rate-limit, expired-session and error states in the UI;
+responsive, accessible layout with loading/empty/error states everywhere; charts from Recharts
+fed only by API aggregates; 10 automated backend suites (226 tests) covering the lifecycle end
+to end, plus 13 hermetic and 3 live frontend tests for the authentication and session layer.
 
 ---
 
@@ -664,9 +697,18 @@ Honest scope boundaries — useful for a viva or a code review:
 8. **No file uploads.** Item photos and recycling certificates are out of scope.
 9. **Batch item weight allocation** assumes one item per inspection record; bulk inspection of a
    pickup allocates weights per item but the schema keeps one measurement per item.
-10. **The frontend has no component test suite.** The backend is covered by unit and integration
-    tests; the UI was verified by production build plus the scripted walkthrough above, which is
-    the honest extent of the automation.
+10. **Dependency advisories accepted knowingly.** `npm audit` reports two moderate advisories in
+    `react-router-dom` 6.x (an open-redirect in `<Link>`/`useNavigate` with attacker-controlled
+    backslash paths, and an SSR-hydration issue that cannot apply here — this client has no
+    server rendering). All navigation targets are fixed internal paths, so neither is reachable;
+    the fix is React Router 7, a breaking upgrade outside this project's pinned versions. The
+    backend's high-severity report is `deepmerge-ts` inside the Prisma **CLI**, not the runtime
+    client. Both are recorded in the README rather than silenced.
+11. **The frontend suite covers the authentication and session layer, not every screen.** 13
+    hermetic tests plus 3 live ones pin the flows that broke in practice (token attach, reload
+    restore, guards, expired sessions). The remaining screens rely on the production build,
+    server-side tests and the walkthrough above — component tests for each screen would be the
+    next increment.
 
 ---
 
@@ -684,6 +726,9 @@ Honest scope boundaries — useful for a viva or a code review:
 | `Unexpected token '<' … is not valid JSON` | A request hit the dev server instead of the API — usually a wrong `VITE_API_URL`, or the backend crashed. Check the backend log |
 | Everything returns `429 Too Many Requests` | You exhausted the credential limiter (default: 20 failed attempts / 15 min). Wait, or raise `AUTH_RATE_LIMIT_MAX_ATTEMPTS` in `.env` |
 | `401 Invalid or expired token` immediately after signing in | `JWT_SECRET` changed between signing and verifying (e.g. the `.env` file was edited). Sign in again |
+| Protected pages report `Missing bearer token` right after a successful login | The browser refused to store the session token (sandboxed iframe, blocked cookies/storage, private mode). The client now keeps the token in memory, so this only appears if the session genuinely ended — check the browser console for a `SecurityError` and sign in again |
+| Signed out again after every page reload | Web Storage is unavailable in that context, so the session cannot be persisted. Normal in a sandboxed preview iframe; open the app directly in a browser tab to keep the session across reloads |
+| Frontend tests fail with *no EcoCycle API at http://127.0.0.1:5173* | Expected for `npm run test:live`: it needs both dev servers running. Use `npm test` for the hermetic suite, or set `ECOCYCLE_API_URL` |
 | Tests fail with `TEST_DATABASE_URL must be set` | Add `TEST_DATABASE_URL` to `backend/.env` — it must point at a **different** database than `DATABASE_URL` |
 | `psql: command not found` on Windows | Add PostgreSQL's `bin` folder (e.g. `C:\Program Files\PostgreSQL\17\bin`) to `PATH`, or use pgAdmin / the full path to `psql.exe` |
 | Port 5173 or 4000 already in use | Change `PORT` in `backend/.env`, and start Vite with `npm run dev -- --port 5174` |

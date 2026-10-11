@@ -45,21 +45,78 @@ export class ApiError extends Error {
   }
 }
 
-export function getStoredToken(): string | null {
+/**
+ * The token used for the lifetime of the page, kept in memory first.
+ *
+ * Web Storage is *not* always available: a sandboxed iframe (`sandbox="allow-scripts"` gives
+ * the document an opaque origin), Safari in private mode and some embedded webviews throw a
+ * `SecurityError` on any `window.localStorage` access. Reading the token exclusively from
+ * storage meant that in those environments a signed-in user sent every request without an
+ * `Authorization` header, and the API — quite correctly — answered
+ * `401 Missing bearer token` even though the sign-in had just succeeded.
+ *
+ * Memory is therefore the source of truth, and storage is a best-effort persistence layer
+ * that lets a page reload restore the session when it is available.
+ */
+let memoryToken: string | null = null;
+let persistenceAvailable: boolean | null = null;
+
+function readPersistedToken(): string | null {
   try {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    const persisted = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    persistenceAvailable = true;
+    return persisted;
   } catch {
+    persistenceAvailable = false;
     return null;
   }
 }
 
-export function setStoredToken(token: string | null): void {
+function persistToken(token: string | null): void {
   try {
     if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
     else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    persistenceAvailable = true;
   } catch {
-    /* storage unavailable (private mode) — the session simply will not persist */
+    // Storage blocked or full: the session still works for this page load, it just cannot
+    // survive a reload. `isSessionPersistenceAvailable()` lets the UI say so.
+    persistenceAvailable = false;
   }
+}
+
+export function getStoredToken(): string | null {
+  if (memoryToken) return memoryToken;
+  const persisted = readPersistedToken();
+  if (persisted) memoryToken = persisted;
+  return memoryToken;
+}
+
+export function setStoredToken(token: string | null): void {
+  const next = token?.trim() ? token.trim() : null;
+  memoryToken = next;
+  persistToken(next);
+}
+
+/**
+ * `false` when the browser refuses Web Storage access, meaning the signed-in session cannot
+ * survive a page reload in this context. `true` once a read or write has succeeded.
+ */
+export function isSessionPersistenceAvailable(): boolean {
+  if (persistenceAvailable === null) readPersistedToken();
+  return persistenceAvailable === true;
+}
+
+type UnauthorizedHandler = (error: ApiError) => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/**
+ * Registers the reaction to a request that the API rejected as unauthenticated. The auth
+ * layer uses it to drop the dead session so the router can send the user back to the login
+ * screen instead of leaving an error panel on a protected page.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
 }
 
 interface RequestOptions {
@@ -124,15 +181,28 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   if (!response.ok) {
     const errorBody = (payload as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;
 
-    // An expired/invalid token must not leave a broken session behind.
-    if (response.status === 401 && token) setStoredToken(null);
-
-    throw new ApiError(
-      response.status,
-      errorBody?.code ?? 'HTTP_ERROR',
-      errorBody?.message ?? `Request failed with status ${response.status}`,
+    const status = response.status;
+    const code = errorBody?.code ?? 'HTTP_ERROR';
+    const apiError = new ApiError(
+      status,
+      code,
+      errorBody?.message ?? `Request failed with status ${status}`,
       errorBody?.details,
     );
+
+    // A `401` on anything other than the credential entry points means the session is gone
+    // (expired token, deleted or suspended account) or was never attached. Drop the token and
+    // let the app return to the login screen. `INVALID_CREDENTIALS` is excluded: that is a
+    // wrong password on /auth/login or /auth/change-password, not a broken session.
+    const isSessionFailure =
+      status === 401 && (code === 'UNAUTHENTICATED' || code === 'TOKEN_EXPIRED' || code === 'HTTP_ERROR');
+
+    if (isSessionFailure) {
+      if (token) setStoredToken(null);
+      unauthorizedHandler?.(apiError);
+    }
+
+    throw apiError;
   }
 
   return payload as T;

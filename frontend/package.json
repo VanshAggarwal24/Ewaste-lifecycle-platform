@@ -2,14 +2,17 @@
   "name": "ecocycle-frontend",
   "private": true,
   "version": "1.0.0",
-  "description": "EcoCycle e-waste lifecycle management platform — React + TypeScript + Vite client",
+  "description": "EcoCycle e-waste lifecycle management platform \u2014 React + TypeScript + Vite client",
   "type": "module",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false || tsc -p tsconfig.app.json --noEmit"
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "lucide-react": "1.55.0",
@@ -21,12 +24,16 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.18.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "4.7.0",
+    "jsdom": "^26.1.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
-    "vite": "6.4.4"
+    "vite": "6.4.4",
+    "vitest": "^3.2.7"
   }
 }

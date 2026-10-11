@@ -135,7 +135,31 @@ describe('authentication', () => {
         .send({ email: fx.citizen.email, password: 'definitely-wrong' });
 
       expect(response.status).toBe(401);
+      // Deliberately NOT `UNAUTHENTICATED`: the client must read this as a bad password on the
+      // form, not as an expired session worth clearing.
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('hands back a token that authorises protected requests (login → authenticated call)', async () => {
+      const login = await anon(fx.app)
+        .post('/api/auth/login')
+        .send({ email: fx.citizen.email, password: TEST_PASSWORD });
+      expect(login.status).toBe(200);
+      const token = login.body.data.token as string;
+
+      // Exactly what the browser then does with the stored token.
+      const me = await anon(fx.app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      expect(me.status).toBe(200);
+      expect(me.body.data.user.id).toBe(fx.citizen.id);
+
+      const dashboard = await anon(fx.app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+      expect(dashboard.status).toBe(200);
+      expect(dashboard.body.data.role).toBe('USER');
+
+      // And the token really is what made the difference.
+      const withoutToken = await anon(fx.app).get('/api/dashboard');
+      expect(withoutToken.status).toBe(401);
+      expect(withoutToken.body.error.code).toBe('UNAUTHENTICATED');
     });
 
     it('gives the same response for an unknown email (no account enumeration)', async () => {
@@ -180,9 +204,13 @@ describe('authentication', () => {
       expect(JSON.stringify(response.body)).not.toMatch(/passwordHash/);
     });
 
-    it('rejects a missing token', async () => {
+    it('rejects a missing token with the envelope the web client keys off', async () => {
       const response = await anon(fx.app).get('/api/auth/me');
       expect(response.status).toBe(401);
+      // The browser client uses this exact code to decide that the session is over and the
+      // visitor must be sent back to the login screen. Changing it breaks that contract.
+      expect(response.body.error.code).toBe('UNAUTHENTICATED');
+      expect(response.body.error.message).toBe('Missing bearer token');
     });
 
     it.each([
