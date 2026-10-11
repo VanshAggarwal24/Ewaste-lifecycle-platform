@@ -466,7 +466,7 @@ returns the API's own explanation, and the UI shows it verbatim.
 
 ## Automated tests
 
-### Backend — 10 suites, 226 tests
+### Backend — 11 suites, 228 tests
 
 ```powershell
 cd backend
@@ -479,8 +479,8 @@ npm run test:coverage    # with a coverage report
 Verified on this repository:
 
 ```
-Test Suites: 10 passed, 10 total
-Tests:       226 passed, 226 total
+Test Suites: 11 passed, 11 total
+Tests:       228 passed, 228 total
 ```
 
 | Suite | Tests | Covers |
@@ -490,7 +490,8 @@ Tests:       226 passed, 226 total
 | `unit/security.test.ts` | 25 | password hashing and policy, JWT signing/verification and tampering, bearer extraction, geospatial helpers, response serialisation |
 | `unit/inspection.test.ts` | 17 | quality grading bands, processing-path suggestions, business-identifier generation, pagination and query helpers |
 | `integration/lifecycle.test.ts` | 17 | the full path from submission to completed recycling, asserting persisted rows after every step |
-| `integration/auth.test.ts` | 31 | registration (including role injection and case-insensitive emails), login, suspension, token handling, profile self-service, and the login → authenticated-call contract |
+| `integration/auth.test.ts` | 32 | registration (including role injection and case-insensitive emails), login, suspension, token handling, profile self-service, and the login → authenticated-call contract |
+| `unit/roles.test.ts` | 2 | the five role strings match the PostgreSQL enum and the client's routing vocabulary |
 | `integration/authorization.test.ts` | 37 | the unauthenticated wall, record-level ownership, role gates, per-role data scoping, input hardening |
 | `integration/guards.test.ts` | 25 | duplicate prevention, illegal transitions, assignment edge cases, cancellation semantics, agent failure paths |
 | `integration/admin.test.ts` | 29 | privileged account creation, user/centre/category management, analytics that agree with raw SQL, profile summaries |
@@ -501,7 +502,7 @@ The integration suites run against a **separate database** (`TEST_DATABASE_URL`)
 its own fixtures. Your development data is never touched, and the helper refuses to run if
 `TEST_DATABASE_URL` is missing or identical to `DATABASE_URL`.
 
-### Frontend — 13 hermetic tests + 3 live smoke tests
+### Frontend — 28 hermetic tests + 11 live smoke tests
 
 ```powershell
 cd frontend
@@ -514,11 +515,18 @@ npm run typecheck # app, node and test TypeScript projects
 |------|------:|--------|
 | `tests/auth.client.test.ts` | 6 | the token is attached to every request, including when `window.localStorage` throws (`SecurityError`) as it does in a sandboxed iframe; the header is omitted only when there is genuinely no session |
 | `tests/auth.flow.test.tsx` | 7 | sign-in → protected request carries the token; a blocked-storage sign-in never lands on "Missing bearer token"; a reload with a persisted token restores the session through `/auth/me`; an expired token returns the visitor to `/login`; the guard stops anonymous visitors without calling the API |
-| `tests/live/auth.live.ts` | 3 | the same flows driven against the **real** API through the dev-server proxy, with Web Storage blocked — it fails with `Missing bearer token` against an unfixed client, which is exactly the regression it guards |
+| `tests/auth.redirect.test.tsx` | 3 | the screen a user lands on after signing in: a role is never sent to a route its guard refuses (the administrator-after-a-staff-session case), a permitted destination is still honoured, and `/login`/`/register` are never redirect targets |
+| `tests/auth.session.test.tsx` | 5 | a late 401 belonging to an **older token** cannot end the session that replaced it; a genuine 403 keeps the token, the page and the current session (and shows the API's reason); a protected page renders nothing and issues no data request until the session has been restored |
+| `tests/roles.test.ts` | 7 | the five role strings match the backend enum, every role can open its own home screen, other roles' screens are refused, and parameterised routes resolve |
+| `tests/live/auth.live.ts` | 11 | against the **real** API through the dev proxy: all five seeded accounts sign in and reach their own dashboard with the bearer token; the proxy forwards `Authorization` (raw `fetch`, no client); a persisted token restores a session; a blocked-storage login works; and a genuine 403 (`FORBIDDEN`) is distinguishable from a lost session (`UNAUTHENTICATED`/`INVALID_CREDENTIALS`) |
 
 The live suite is excluded from `npm test` so the default run stays hermetic and CI-safe; it
 is meant to be run while the two dev servers are up, and it can be pointed at another host with
 `ECOCYCLE_API_URL`.
+
+Both layers exist for a reason: the hermetic tests pin the *decisions* (which screen a role is
+sent to, how a 401/403 is classified, when a session ends) with a stubbed API, while the live
+suite proves the same behaviour against the real backend and the reverse proxy.
 
 ---
 
@@ -592,7 +600,11 @@ candidate table — useful for demonstrating the algorithm without changing data
   `allow-same-origin`), Safari private mode and some embedded webviews throw on any Web Storage
   access; the client keeps working there and simply cannot survive a reload, which the login
   screen states. A `401` on any request other than the credential endpoints drops the session
-  and returns the visitor to `/login` with an explanation.
+  and returns the visitor to `/login` with an explanation. Two rules keep that from
+  mis-firing: a rejection is only acted on when it belongs to the token that is still current
+  (a late response from a previous session cannot end a newer one), and **403 is never treated
+  as an expiry** — it means "authenticated, but not allowed", so the token and the page stay
+  and the API's own reason is displayed.
 * **Authorization** — `requireRole(...)` per route plus per-record ownership filters inside the
   queries themselves, so a citizen cannot read another citizen's item even by guessing its id
   (such lookups return `404`, not `403`, to avoid leaking existence).

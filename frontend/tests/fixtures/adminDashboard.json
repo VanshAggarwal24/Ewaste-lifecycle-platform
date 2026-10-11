@@ -1,0 +1,462 @@
+{
+  "role": "ADMIN",
+  "summary": {
+    "items": {
+      "total": 4,
+      "estimatedWeightKg": 12.3,
+      "byStatus": [
+        {
+          "status": "PROCESSING",
+          "count": 2
+        },
+        {
+          "status": "PICKUP_SCHEDULED",
+          "count": 1
+        },
+        {
+          "status": "IN_BATCH",
+          "count": 1
+        }
+      ]
+    },
+    "pickups": {
+      "total": 2,
+      "byStatus": [
+        {
+          "status": "RECEIVED_AT_CENTER",
+          "count": 1
+        },
+        {
+          "status": "REQUESTED",
+          "count": 1
+        }
+      ]
+    },
+    "inspections": {
+      "completed": 3,
+      "measuredWeightKg": 10.9,
+      "averageQualityScore": 56
+    },
+    "batches": {
+      "total": 2,
+      "byStatus": [
+        {
+          "status": "READY",
+          "count": 1
+        },
+        {
+          "status": "IN_PROGRESS",
+          "count": 1
+        }
+      ]
+    },
+    "recovery": {
+      "records": 5,
+      "quantityKg": 7.9,
+      "yieldPct": 72.5
+    },
+    "users": [
+      {
+        "role": "CENTER_STAFF",
+        "count": 2
+      },
+      {
+        "role": "USER",
+        "count": 3
+      },
+      {
+        "role": "ADMIN",
+        "count": 1
+      },
+      {
+        "role": "RECYCLER",
+        "count": 2
+      },
+      {
+        "role": "COLLECTION_AGENT",
+        "count": 3
+      }
+    ],
+    "collectionCenters": 2
+  },
+  "usersByRole": [
+    {
+      "role": "RECYCLER",
+      "status": "ACTIVE",
+      "count": 2
+    },
+    {
+      "role": "COLLECTION_AGENT",
+      "status": "ACTIVE",
+      "count": 3
+    },
+    {
+      "role": "USER",
+      "status": "ACTIVE",
+      "count": 3
+    },
+    {
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "count": 1
+    },
+    {
+      "role": "CENTER_STAFF",
+      "status": "ACTIVE",
+      "count": 2
+    }
+  ],
+  "collectionCenters": 2,
+  "assignmentStats": {
+    "totalAttempts": 1,
+    "byOutcome": [
+      {
+        "outcome": "ASSIGNED",
+        "count": 1
+      }
+    ],
+    "byMethod": [
+      {
+        "method": "AUTO",
+        "count": 1
+      }
+    ],
+    "successRatePct": 100,
+    "averageScore": 0.8125,
+    "averageDistanceKm": 3.4,
+    "recentFailures": []
+  },
+  "needsAttention": {
+    "unassignedPickups": 1,
+    "batchesAwaitingRecycler": 1,
+    "awaitingInspectionItems": 0,
+    "pickups": [
+      {
+        "id": 2,
+        "requestCode": "PR-2026-01002",
+        "status": "REQUESTED",
+        "city": "Chennai",
+        "preferredDate": "2026-10-14T00:00:00.000Z",
+        "failureReason": null,
+        "_count": {
+          "items": 1
+        }
+      }
+    ],
+    "batches": [
+      {
+        "id": 2,
+        "batchCode": "BAT-2026-01002",
+        "name": "Refurbishment candidates \u2014 laptops",
+        "_count": {
+          "batchItems": 1
+        }
+      }
+    ]
+  },
+  "recentActivity": [
+    {
+      "id": 35,
+      "entityType": "EWASTE_ITEM",
+      "status": "PICKUP_SCHEDULED",
+      "note": "Scheduled for pickup PR-2026-01002",
+      "createdAt": "2026-10-10T10:46:52.019Z",
+      "actor": {
+        "id": 10,
+        "fullName": "Vikram Desai",
+        "role": "USER"
+      },
+      "metadata": null,
+      "subject": "ITEM",
+      "subjectRef": null
+    },
+    {
+      "id": 34,
+      "entityType": "PICKUP_REQUEST",
+      "status": "REQUESTED",
+      "note": "Pickup requested \u2014 awaiting agent assignment",
+      "createdAt": "2026-10-10T10:46:52.019Z",
+      "actor": {
+        "id": 10,
+        "fullName": "Vikram Desai",
+        "role": "USER"
+      },
+      "metadata": null,
+      "subject": "PICKUP_REQUEST",
+      "subjectRef": null
+    },
+    {
+      "id": 30,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Recovered 0.95 kg of PLASTIC at 80% purity",
+      "createdAt": "2026-10-09T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 29,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Recovered 1.9 kg of BATTERY_CHEMICALS at 72% purity",
+      "createdAt": "2026-10-09T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 28,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Recovered 2.6 kg of GLASS at 88% purity",
+      "createdAt": "2026-10-09T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 27,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Recovered 1.1 kg of ALUMINIUM at 94% purity",
+      "createdAt": "2026-10-09T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 26,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Recovered 1.35 kg of COPPER at 96.5% purity",
+      "createdAt": "2026-10-09T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 33,
+      "entityType": "PROCESSING_BATCH",
+      "status": "READY",
+      "note": "Batch sealed and awaiting recycler assignment",
+      "createdAt": "2026-10-08T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 25,
+      "entityType": "PROCESSING_BATCH",
+      "status": "IN_PROGRESS",
+      "note": "Processing started",
+      "createdAt": "2026-10-08T10:46:52.002Z",
+      "actor": {
+        "id": 7,
+        "fullName": "Suresh Iyer",
+        "role": "RECYCLER"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 32,
+      "entityType": "EWASTE_ITEM",
+      "status": "IN_BATCH",
+      "note": "Added to processing batch BAT-2026-01002",
+      "createdAt": "2026-10-07T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "ITEM",
+      "subjectRef": null
+    },
+    {
+      "id": 31,
+      "entityType": "PROCESSING_BATCH",
+      "status": "DRAFT",
+      "note": "Batch BAT-2026-01002 created at Chennai Central Collection Hub",
+      "createdAt": "2026-10-07T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 24,
+      "entityType": "EWASTE_ITEM",
+      "status": "PROCESSING",
+      "note": "Released for processing in batch BAT-2026-01001",
+      "createdAt": "2026-10-07T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "ITEM",
+      "subjectRef": null
+    },
+    {
+      "id": 23,
+      "entityType": "EWASTE_ITEM",
+      "status": "PROCESSING",
+      "note": "Released for processing in batch BAT-2026-01001",
+      "createdAt": "2026-10-07T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "ITEM",
+      "subjectRef": null
+    },
+    {
+      "id": 22,
+      "entityType": "PROCESSING_BATCH",
+      "status": "RELEASED",
+      "note": "Batch released to GreenMetals Recovery Pvt Ltd",
+      "createdAt": "2026-10-07T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    },
+    {
+      "id": 21,
+      "entityType": "PROCESSING_BATCH",
+      "status": "READY",
+      "note": "Batch sealed and ready for release",
+      "createdAt": "2026-10-06T10:46:52.002Z",
+      "actor": {
+        "id": 5,
+        "fullName": "Divya Menon",
+        "role": "CENTER_STAFF"
+      },
+      "metadata": null,
+      "subject": "BATCH",
+      "subjectRef": null
+    }
+  ],
+  "monthly": [
+    {
+      "month": "2026-05",
+      "submissions": 0,
+      "collected": 0,
+      "recovered": 0,
+      "recoveredQuantityKg": 0
+    },
+    {
+      "month": "2026-06",
+      "submissions": 0,
+      "collected": 0,
+      "recovered": 0,
+      "recoveredQuantityKg": 0
+    },
+    {
+      "month": "2026-07",
+      "submissions": 0,
+      "collected": 0,
+      "recovered": 0,
+      "recoveredQuantityKg": 0
+    },
+    {
+      "month": "2026-08",
+      "submissions": 0,
+      "collected": 0,
+      "recovered": 0,
+      "recoveredQuantityKg": 0
+    },
+    {
+      "month": "2026-09",
+      "submissions": 0,
+      "collected": 0,
+      "recovered": 0,
+      "recoveredQuantityKg": 0
+    },
+    {
+      "month": "2026-10",
+      "submissions": 4,
+      "collected": 1,
+      "recovered": 5,
+      "recoveredQuantityKg": 7.9
+    }
+  ],
+  "categoryMix": [
+    {
+      "categoryId": 4,
+      "name": "Batteries & Power Cells",
+      "hazardLevel": 5,
+      "defaultPath": "MATERIAL_RECOVERY",
+      "count": 1,
+      "estimatedWeightKg": 0.6
+    },
+    {
+      "categoryId": 6,
+      "name": "Networking Equipment",
+      "hazardLevel": 3,
+      "defaultPath": "COMPONENT_RECOVERY",
+      "count": 1,
+      "estimatedWeightKg": 3.2
+    },
+    {
+      "categoryId": 3,
+      "name": "Televisions & Monitors",
+      "hazardLevel": 4,
+      "defaultPath": "MATERIAL_RECOVERY",
+      "count": 1,
+      "estimatedWeightKg": 6.4
+    },
+    {
+      "categoryId": 2,
+      "name": "Laptops & Computers",
+      "hazardLevel": 3,
+      "defaultPath": "REFURBISHMENT",
+      "count": 1,
+      "estimatedWeightKg": 2.1
+    }
+  ]
+}

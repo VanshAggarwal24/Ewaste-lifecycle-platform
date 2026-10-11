@@ -122,8 +122,14 @@ describe('authentication', () => {
         .send({ email: fx.citizen.email, password: TEST_PASSWORD });
 
       expect(response.status).toBe(200);
+      // The exact contract the browser client reads: `{ data: { token, user } }`.
+      expect(Object.keys(response.body.data).sort()).toEqual(['token', 'user']);
+      expect(Object.keys(response.body.data.user)).toEqual(
+        expect.arrayContaining(['id', 'email', 'fullName', 'role']),
+      );
       expect(response.body.data.token).toEqual(expect.any(String));
       expect(response.body.data.user.id).toBe(fx.citizen.id);
+      expect(response.body.data.user.role).toBe('USER');
 
       const stored = await prisma.user.findUniqueOrThrow({ where: { id: fx.citizen.id } });
       expect(stored.lastLoginAt).toBeInstanceOf(Date);

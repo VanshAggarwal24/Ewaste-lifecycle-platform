@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ShieldCheck, UserPlus } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/context/AuthContext';
-import { ROLE_HOME } from '@/lib/domain';
 import { Button, InlineError, TextAreaField, TextField } from '@/components/ui';
 import { AuthShell } from './AuthShell';
 import { DemoAccountsPanel } from './DemoAccountsPanel';
@@ -16,7 +15,6 @@ import { DemoAccountsPanel } from './DemoAccountsPanel';
  */
 export function RegisterPage() {
   const { register } = useAuth();
-  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     fullName: '',
@@ -49,7 +47,7 @@ export function RegisterPage() {
     setBusy(true);
 
     try {
-      const user = await register({
+      await register({
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         password: form.password,
@@ -59,7 +57,7 @@ export function RegisterPage() {
         ...(form.state.trim() ? { state: form.state.trim() } : {}),
         ...(form.pincode.trim() ? { pincode: form.pincode.trim() } : {}),
       });
-      navigate(ROLE_HOME[user.role], { replace: true });
+      // Navigation is owned by <RedirectIfAuthenticated>, exactly as on the sign-in screen.
     } catch (caught) {
       setError(caught);
       if (caught instanceof ApiError) setFieldErrors(caught.fieldErrors);

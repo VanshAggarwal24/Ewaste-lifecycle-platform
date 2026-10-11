@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { ROLE_HOME } from '@/lib/domain';
 import { AuthenticatedLayout, RedirectIfAuthenticated, RequireRole } from '@/components/layout/RouteGuards';
+import { ROUTE_ROLES } from '@/lib/routeAccess';
 import { Spinner } from '@/components/ui';
 
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -56,8 +57,10 @@ function RoleRedirect() {
 /**
  * Route table.
  *
- * Role guards here control navigation only — every screen behind them still calls the API,
- * which re-checks the caller's role, ownership and the record's state on each request.
+ * The allowed roles for each guarded route come from `ROUTE_ROLES` (lib/routeAccess.ts), which
+ * the post-login redirect reads as well — so the two can never disagree about who may open a
+ * screen. Guards control navigation only: every screen behind them still calls the API, which
+ * re-checks the caller's role, ownership and the record's state on each request.
  */
 export default function App() {
   return (
@@ -89,7 +92,7 @@ export default function App() {
         <Route
           path="/dashboard"
           element={
-            <RequireRole roles={['USER']}>
+            <RequireRole roles={ROUTE_ROLES['/dashboard']}>
               <UserDashboardPage />
             </RequireRole>
           }
@@ -97,7 +100,7 @@ export default function App() {
         <Route
           path="/items/new"
           element={
-            <RequireRole roles={['USER', 'ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/items/new']}>
               <SubmitItemPage />
             </RequireRole>
           }
@@ -111,7 +114,7 @@ export default function App() {
         <Route
           path="/agent"
           element={
-            <RequireRole roles={['COLLECTION_AGENT']}>
+            <RequireRole roles={ROUTE_ROLES['/agent']}>
               <AgentDashboardPage />
             </RequireRole>
           }
@@ -119,7 +122,7 @@ export default function App() {
         <Route
           path="/agent/assignments"
           element={
-            <RequireRole roles={['COLLECTION_AGENT']}>
+            <RequireRole roles={ROUTE_ROLES['/agent/assignments']}>
               <AgentAssignmentsPage />
             </RequireRole>
           }
@@ -127,7 +130,7 @@ export default function App() {
         <Route
           path="/agent/history"
           element={
-            <RequireRole roles={['COLLECTION_AGENT']}>
+            <RequireRole roles={ROUTE_ROLES['/agent/history']}>
               <AgentAssignmentsPage />
             </RequireRole>
           }
@@ -137,7 +140,7 @@ export default function App() {
         <Route
           path="/center"
           element={
-            <RequireRole roles={['CENTER_STAFF']}>
+            <RequireRole roles={ROUTE_ROLES['/center']}>
               <CenterDashboardPage />
             </RequireRole>
           }
@@ -145,7 +148,7 @@ export default function App() {
         <Route
           path="/center/incoming"
           element={
-            <RequireRole roles={['CENTER_STAFF']}>
+            <RequireRole roles={ROUTE_ROLES['/center/incoming']}>
               <PickupsPage title="Incoming pickups" />
             </RequireRole>
           }
@@ -153,7 +156,7 @@ export default function App() {
         <Route
           path="/center/inspections"
           element={
-            <RequireRole roles={['CENTER_STAFF']}>
+            <RequireRole roles={ROUTE_ROLES['/center/inspections']}>
               <InspectionsPage />
             </RequireRole>
           }
@@ -161,7 +164,7 @@ export default function App() {
         <Route
           path="/center/inspect/:id"
           element={
-            <RequireRole roles={['CENTER_STAFF', 'ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/center/inspect/:id']}>
               <InspectItemPage />
             </RequireRole>
           }
@@ -169,7 +172,7 @@ export default function App() {
         <Route
           path="/center/batches"
           element={
-            <RequireRole roles={['CENTER_STAFF']}>
+            <RequireRole roles={ROUTE_ROLES['/center/batches']}>
               <BatchesPage />
             </RequireRole>
           }
@@ -179,7 +182,7 @@ export default function App() {
         <Route
           path="/recycler"
           element={
-            <RequireRole roles={['RECYCLER']}>
+            <RequireRole roles={ROUTE_ROLES['/recycler']}>
               <RecyclerDashboardPage />
             </RequireRole>
           }
@@ -187,7 +190,7 @@ export default function App() {
         <Route
           path="/recycler/batches"
           element={
-            <RequireRole roles={['RECYCLER']}>
+            <RequireRole roles={ROUTE_ROLES['/recycler/batches']}>
               <RecyclerBatchesPage />
             </RequireRole>
           }
@@ -195,7 +198,7 @@ export default function App() {
         <Route
           path="/recycler/recoveries"
           element={
-            <RequireRole roles={['RECYCLER']}>
+            <RequireRole roles={ROUTE_ROLES['/recycler/recoveries']}>
               <RecoveriesPage />
             </RequireRole>
           }
@@ -208,7 +211,7 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin']}>
               <AdminDashboardPage />
             </RequireRole>
           }
@@ -216,7 +219,7 @@ export default function App() {
         <Route
           path="/admin/analytics"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/analytics']}>
               <AnalyticsPage />
             </RequireRole>
           }
@@ -224,7 +227,7 @@ export default function App() {
         <Route
           path="/admin/users"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/users']}>
               <UsersPage />
             </RequireRole>
           }
@@ -232,7 +235,7 @@ export default function App() {
         <Route
           path="/admin/agents"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/agents']}>
               <AgentsPage />
             </RequireRole>
           }
@@ -240,7 +243,7 @@ export default function App() {
         <Route
           path="/admin/centers"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/centers']}>
               <CentersPage />
             </RequireRole>
           }
@@ -248,7 +251,7 @@ export default function App() {
         <Route
           path="/admin/categories"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/categories']}>
               <CategoriesPage />
             </RequireRole>
           }
@@ -256,7 +259,7 @@ export default function App() {
         <Route
           path="/admin/pickups"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/pickups']}>
               <PickupsPage title="All pickup requests" />
             </RequireRole>
           }
@@ -264,7 +267,7 @@ export default function App() {
         <Route
           path="/admin/batches"
           element={
-            <RequireRole roles={['ADMIN']}>
+            <RequireRole roles={ROUTE_ROLES['/admin/batches']}>
               <BatchesPage includeAll />
             </RequireRole>
           }

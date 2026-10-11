@@ -106,7 +106,13 @@ export function isSessionPersistenceAvailable(): boolean {
   return persistenceAvailable === true;
 }
 
-type UnauthorizedHandler = (error: ApiError) => void;
+/**
+ * Called when a request was rejected as unauthenticated, together with the token that the
+ * request carried. The handler receives the token on purpose: a response can land *after* the
+ * visitor has signed in again, and a rejection that belongs to an older token must not end the
+ * session that replaced it.
+ */
+type UnauthorizedHandler = (error: ApiError, failedToken: string | null) => void;
 
 let unauthorizedHandler: UnauthorizedHandler | null = null;
 
@@ -198,8 +204,15 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
       status === 401 && (code === 'UNAUTHENTICATED' || code === 'TOKEN_EXPIRED' || code === 'HTTP_ERROR');
 
     if (isSessionFailure) {
-      if (token) setStoredToken(null);
-      unauthorizedHandler?.(apiError);
+      if (unauthorizedHandler) {
+        // The handler decides what to do, and it needs to compare the refused token with the
+        // current one *before* anything is cleared — a newer session may already have
+        // replaced it while this response was travelling.
+        unauthorizedHandler(apiError, token);
+      } else if (token && getStoredToken() === token) {
+        // No session manager mounted (scripts, smoke tests): drop the dead token.
+        setStoredToken(null);
+      }
     }
 
     throw apiError;

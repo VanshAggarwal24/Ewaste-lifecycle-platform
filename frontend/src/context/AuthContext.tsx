@@ -81,29 +81,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The API client reports any request it had to reject as unauthenticated. Reacting here
   // (rather than in each screen) means a dead token lands the user on the login page with an
   // explanation, instead of every protected page rendering "could not load this view".
+  //
+  // The rejected token is compared with the current one first: responses can arrive after the
+  // visitor has signed in again, and ending the session for a *superseded* token is how a
+  // fresh sign-in used to be wiped out the moment an old request came back.
   useEffect(() => {
-    setUnauthorizedHandler(() => {
+    setUnauthorizedHandler((_error, failedToken) => {
+      if (!failedToken || getStoredToken() !== failedToken) return;
       endSession('Your session has ended. Please sign in again.');
     });
     return () => setUnauthorizedHandler(null);
   }, [endSession]);
 
   const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
-    if (!getStoredToken()) {
+    const tokenAtStart = getStoredToken();
+    if (!tokenAtStart) {
       setUserState(null);
       return null;
     }
     try {
       const me = await apiGet<{ user: AuthUser }>('/api/auth/me');
+      // If the token changed while this call was in flight, a newer session owns the state.
+      if (getStoredToken() !== tokenAtStart) return null;
       setUserState(me.user);
       return me.user;
     } catch (caught) {
-      // Only an authentication failure invalidates the session. A network error or a 5xx
-      // while the API restarts must not throw away a perfectly good token.
+      if (getStoredToken() !== tokenAtStart) return null;
+
       const status = caught instanceof ApiError ? caught.status : 0;
-      if (status === 401 || status === 403) {
+      if (status === 401) {
+        // The token really is gone.
         endSession('Your session has ended. Please sign in again.');
+      } else if (status === 403) {
+        // Authenticated but refused (a suspended account, for instance). The token is still
+        // valid: keep it, and explain what the API said instead of claiming the session ended.
+        setUserState(null);
+        setSessionNotice(
+          caught instanceof ApiError && caught.message
+            ? caught.message
+            : 'Your account cannot access EcoCycle right now. Please contact an administrator.',
+        );
       } else {
+        // Network failure or a 5xx while the API restarts: keep the token, stay quiet.
         setUserState(null);
       }
       return null;

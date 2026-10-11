@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Role } from '@/api/types';
 import { useAuth } from '@/context/AuthContext';
-import { ROLE_HOME } from '@/lib/domain';
+import { safeDestination } from '@/lib/routeAccess';
 import { Spinner } from '@/components/ui';
 import { AppLayout } from './AppLayout';
 
@@ -30,7 +30,12 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
   const location = useLocation();
 
   if (initializing) return <FullPageSpinner label="Restoring your session…" />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) {
+    // Remember where the visitor was heading, so a successful sign-in can return them there —
+    // but only when their role may actually open it (see RedirectIfAuthenticated).
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to="/login" replace state={{ from }} />;
+  }
 
   return <>{children ?? <Outlet />}</>;
 }
@@ -46,11 +51,23 @@ export function RequireRole({ roles, children }: { roles: Role[]; children?: Rea
   return <>{children ?? <Outlet />}</>;
 }
 
-/** Signed-in users landing on /login or /register are sent to their own home page. */
+/**
+ * Signed-in users landing on /login or /register are sent on.
+ *
+ * This component is the *only* place that navigates after a successful sign-in. The login and
+ * registration forms deliberately do not navigate themselves: two competing navigations made
+ * the destination depend on which one React applied last, which is how a user could end up on
+ * a screen their role is not allowed to open. `safeDestination` honours the page the visitor
+ * originally asked for when their role may open it, and falls back to their own home screen.
+ */
 export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   const { user, initializing } = useAuth();
+  const location = useLocation();
   if (initializing) return <FullPageSpinner label="Checking your session…" />;
-  if (user) return <Navigate to={ROLE_HOME[user.role]} replace />;
+  if (user) {
+    const from = (location.state as { from?: string } | null)?.from;
+    return <Navigate to={safeDestination(user.role, from)} replace />;
+  }
   return <>{children}</>;
 }
 

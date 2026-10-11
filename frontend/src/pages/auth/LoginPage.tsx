@@ -1,22 +1,23 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Info, LogIn } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/context/AuthContext';
-import { ROLE_HOME } from '@/lib/domain';
 import { Button, InlineError, TextField } from '@/components/ui';
 import { AuthShell } from './AuthShell';
 import { DemoAccountsPanel } from './DemoAccountsPanel';
 
 /**
- * Sign-in screen. On success the user is sent to the home screen for their role (or back
- * to whichever protected page they were trying to open).
+ * Sign-in screen.
+ *
+ * On success this page deliberately does not navigate: the route guard around it
+ * (`RedirectIfAuthenticated`) performs the single redirect once the session exists, choosing
+ * between the page the visitor was trying to open and their role's home screen. Having one
+ * navigator removes the race that could previously drop a user on a route their role cannot
+ * open — and it means the destination is always checked against `ROUTE_ROLES`.
  */
 export function LoginPage() {
   const { login, sessionNotice, clearSessionNotice, canPersistSession } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const redirectTo = (location.state as { from?: string } | null)?.from;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,9 +32,8 @@ export function LoginPage() {
     setFieldErrors({});
 
     try {
-      const user = await login(email.trim(), password);
-      const destination = redirectTo && redirectTo !== '/login' ? redirectTo : ROLE_HOME[user.role];
-      navigate(destination, { replace: true });
+      await login(email.trim(), password);
+      // The redirect is owned by <RedirectIfAuthenticated>; nothing to do here.
     } catch (caught) {
       setError(caught);
       if (caught instanceof ApiError) setFieldErrors(caught.fieldErrors);
