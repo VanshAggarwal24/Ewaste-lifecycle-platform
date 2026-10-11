@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Info, LogIn } from 'lucide-react';
 import { ApiError } from '@/api/client';
+import { useSandboxSafeForm } from '@/lib/formSubmission';
 import { useAuth } from '@/context/AuthContext';
 import { Button, InlineError, TextField } from '@/components/ui';
 import { AuthShell } from './AuthShell';
@@ -45,6 +46,10 @@ export function LoginPage() {
     }
   }
 
+  // Works in frames where the browser blocks native form submission (the preview's
+  // sandboxed iframe): the click and the Enter key drive the request directly.
+  const submitForm = useSandboxSafeForm(handleSubmit);
+
   return (
     <AuthShell
       title="Sign in"
@@ -58,7 +63,7 @@ export function LoginPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form {...submitForm} className="space-y-4" noValidate>
         {sessionNotice ? (
           <div
             role="status"

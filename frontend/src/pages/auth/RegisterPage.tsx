@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, UserPlus } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/context/AuthContext';
+import { useSandboxSafeForm } from '@/lib/formSubmission';
 import { Button, InlineError, TextAreaField, TextField } from '@/components/ui';
 import { AuthShell } from './AuthShell';
 import { DemoAccountsPanel } from './DemoAccountsPanel';
@@ -66,6 +67,8 @@ export function RegisterPage() {
     }
   }
 
+  const submitForm = useSandboxSafeForm(handleSubmit);
+
   return (
     <AuthShell
       title="Create your account"
@@ -79,7 +82,7 @@ export function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form {...submitForm} className="space-y-4" noValidate>
         <InlineError error={error} />
 
         <div className="flex items-start gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900">

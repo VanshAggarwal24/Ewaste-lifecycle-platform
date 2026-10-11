@@ -503,7 +503,7 @@ The integration suites run against a **separate database** (`TEST_DATABASE_URL`)
 its own fixtures. Your development data is never touched, and the helper refuses to run if
 `TEST_DATABASE_URL` is missing or identical to `DATABASE_URL`.
 
-### Frontend — 33 hermetic tests + 17 live tests
+### Frontend — 42 hermetic tests + 17 live tests
 
 ```powershell
 cd frontend
@@ -519,6 +519,7 @@ npm run typecheck # app, node and test TypeScript projects
 | `tests/auth.redirect.test.tsx` | 3 | the screen a user lands on after signing in: a role is never sent to a route its guard refuses (the administrator-after-a-staff-session case), a permitted destination is still honoured, and `/login`/`/register` are never redirect targets |
 | `tests/auth.session.test.tsx` | 5 | a late 401 belonging to an **older token** cannot end the session that replaced it; a genuine 403 keeps the token, the page and the current session (and shows the API's reason); a protected page renders nothing and issues no data request until the session has been restored |
 | `tests/roles.test.ts` | 7 | the five role strings match the backend enum, every role can open its own home screen, other roles' screens are refused, and parameterised routes resolve |
+| `tests/formSubmission.test.tsx` | 9 | forms submit without relying on the browser's native submission — the click, the Enter key, a real `submit` event, a non-submit control, one press = one request, and (as a documented contrast) the previous wiring doing nothing when `submit` never reaches the app |
 | `tests/auth.notice.test.tsx` | 5 | the session-ended notice: a token left over from an earlier visit is discarded **silently** on arrival, an unreachable API does not destroy the token, sign-in still works afterwards, a session that ends *while in use* is explained, and a stale notice is cleared when a new attempt starts |
 | `tests/live/auth.live.ts` | 11 | against the **real** API through the dev proxy: all five seeded accounts sign in and reach their own dashboard with the bearer token; the proxy forwards `Authorization` (raw `fetch`, no client); a persisted token restores a session; a blocked-storage login works; and a genuine 403 (`FORBIDDEN`) is distinguishable from a lost session (`UNAUTHENTICATED`/`INVALID_CREDENTIALS`) |
 | `tests/live/login.preview.live.tsx` | 6 | the preview itself: the real `App` (routers, guards, auth context, login form) mounted against the running API with Web Storage blocked — each of the five roles signs in through the form, lands on its own dashboard, sees its name, and is never shown a session warning or a 403 |
@@ -601,6 +602,15 @@ candidate table — useful for demonstrating the algorithm without changing data
   origin is answered normally, just without `Access-Control-Allow-Origin`, so the browser
   blocks the read; it is deliberately never an error, because an error there meant a `500` to
   an ordinary browser request and made sign-in impossible from an unrecognised preview host.
+* **Forms in embedded frames** — the platform preview renders the app inside
+  `<iframe sandbox="allow-scripts">`. A frame with the `allow-forms` permission unset refuses
+  native form submission, and because the `submit` event is never dispatched, a form wired only
+  through React's `onSubmit` is dead there: the button appears to do nothing and no request is
+  made. `src/lib/formSubmission.ts` (`useSandboxSafeForm`) therefore drives submission from the
+  click and the Enter key as well, cancelling the native attempt, and every form in the app uses
+  it. This is why the sign-in screen works inside the preview as well as in a normal tab.
+* **Build stamp** — the sign-in screen shows the build it is running (`build <sha> · <UTC time>`),
+  so "is this tab running the fixed code?" is answerable at a glance instead of by guessing.
 * **Sessions** — stateless JWT (`HS256`) with an expiry (`JWT_EXPIRES_IN`, default 8 h). The
   secret comes from the environment; production refuses to start with a short one. The token is
   verified on every request and the user is re-read from the database, so suspension takes
@@ -750,7 +760,8 @@ Honest scope boundaries — useful for a viva or a code review:
 | Frontend loads but every page shows a network error | The API is not running, or it is on another port. Start `npm run dev` in `backend`, and check `VITE_PROXY_TARGET` in `frontend/.env` |
 | `Unexpected token '<' … is not valid JSON` | A request hit the dev server instead of the API — usually a wrong `VITE_API_URL`, or the backend crashed. Check the backend log |
 | Sign-in fails with `500` and *Origin … is not allowed by CORS* | An older backend treated a disallowed origin as a server error. Update and restart the API (`npm run dev` in `backend/`) — a rejected origin is now answered normally, without CORS headers |
-| The sign-in page greets you with *Your session has ended* before you have done anything | That is a token left over from an earlier visit. It is now discarded silently; reload the page with the current build |
+| The sign-in page greets you with *Your session has ended* before you have done anything | That is a token left over from an earlier visit. It is now discarded silently; check the `build …` stamp on the sign-in screen and hard-reload if it shows an older commit |
+| Clicking **Sign in** does nothing in an embedded preview | The frame blocks native form submission (see *Forms in embedded frames* above). Fixed in `src/lib/formSubmission.ts`; make sure the tab is not running an older bundle (build stamp) |
 | Everything returns `429 Too Many Requests` | You exhausted the credential limiter (default: 20 failed attempts / 15 min). Wait, or raise `AUTH_RATE_LIMIT_MAX_ATTEMPTS` in `.env` |
 | `401 Invalid or expired token` immediately after signing in | `JWT_SECRET` changed between signing and verifying (e.g. the `.env` file was edited). Sign in again |
 | Protected pages report `Missing bearer token` right after a successful login | The browser refused to store the session token (sandboxed iframe, blocked cookies/storage, private mode). The client now keeps the token in memory, so this only appears if the session genuinely ended — check the browser console for a `SecurityError` and sign in again |

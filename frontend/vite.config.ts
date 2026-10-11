@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -10,8 +11,31 @@ import tailwindcss from '@tailwindcss/vite';
  * one origin. That removes CORS from the development story entirely and keeps the same
  * relative URLs working in production behind a reverse proxy.
  */
+/**
+ * Identifies the code the browser is actually running.
+ *
+ * Shown on the sign-in screen. When something "still fails after the fix", the first thing
+ * worth knowing is whether the tab is running the current code or a bundle it kept from an
+ * earlier visit — this makes that a one-glance check instead of a guess. Falls back cleanly
+ * when the project is not a git checkout (for example a downloaded ZIP).
+ */
+function buildStamp(): string {
+  const at = new Date().toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+    return `${sha} · ${at}`;
+  } catch {
+    return at;
+  }
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __APP_BUILD__: JSON.stringify(buildStamp()),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

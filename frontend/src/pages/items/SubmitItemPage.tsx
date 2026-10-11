@@ -1,3 +1,4 @@
+import { useSandboxSafeForm } from '@/lib/formSubmission';
 import { useCallback, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CalendarClock, PackagePlus, Plus, Trash2, Truck } from 'lucide-react';
@@ -152,6 +153,8 @@ export function SubmitItemPage() {
     navigate(result.pickupRequest ? `/pickups/${result.pickupRequest.id}` : '/items');
   }
 
+  const submitForm = useSandboxSafeForm(handleSubmit);
+
   if (loading) return <LoadingBlock label="Loading categories…" />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
 
@@ -170,7 +173,7 @@ export function SubmitItemPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form {...submitForm} noValidate>
       <PageHeader
         title="Submit e-waste"
         description="Register the devices you want to hand over. Add a pickup request to have them collected from your address."

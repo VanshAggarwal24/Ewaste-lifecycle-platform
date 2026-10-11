@@ -1,3 +1,4 @@
+import { useSandboxSafeForm } from '@/lib/formSubmission';
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ClipboardCheck, Info, Save, Scale } from 'lucide-react';
@@ -111,6 +112,8 @@ export function InspectItemPage() {
     }
   }
 
+  const submitForm = useSandboxSafeForm(handleSubmit);
+
   if (loading) return <LoadingBlock label="Loading item…" />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   if (!item) return <EmptyState title="Item not found" />;
@@ -130,7 +133,7 @@ export function InspectItemPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form {...submitForm} noValidate>
       <PageHeader
         title={`Inspect ${item.name}`}
         description={

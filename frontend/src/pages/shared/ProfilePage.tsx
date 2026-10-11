@@ -1,3 +1,4 @@
+import { useSandboxSafeForm } from '@/lib/formSubmission';
 import { useState, type FormEvent } from 'react';
 import { KeyRound, Save, UserCog } from 'lucide-react';
 import { ApiError } from '@/api/client';
@@ -107,6 +108,10 @@ export function ProfilePage() {
     }
   }
 
+  // Both forms work in frames that block native form submission (see lib/formSubmission.ts).
+  const profileForm = useSandboxSafeForm(saveProfile);
+  const passwordForm = useSandboxSafeForm(changePassword);
+
   if (!user) return null;
 
   return (
@@ -151,7 +156,7 @@ export function ProfilePage() {
         <Card className="lg:col-span-2">
           <CardHeader title="Contact & address" subtitle="Saved with your account" />
           <CardBody>
-            <form onSubmit={saveProfile} className="space-y-4" noValidate>
+            <form {...profileForm} className="space-y-4" noValidate>
               <InlineError error={error} />
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -239,7 +244,7 @@ export function ProfilePage() {
       <Card className="mt-6 max-w-2xl">
         <CardHeader title="Change password" subtitle="Passwords are hashed on the server; the plain value is never stored." icon={<KeyRound className="h-4 w-4" />} />
         <CardBody>
-          <form onSubmit={changePassword} className="space-y-4" noValidate>
+          <form {...passwordForm} className="space-y-4" noValidate>
             <InlineError error={passwordError} />
             <TextField
               label="Current password"

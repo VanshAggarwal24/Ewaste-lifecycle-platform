@@ -77,6 +77,9 @@ export function AuthShell({
           {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
           <div className="mt-6">{children}</div>
           {footer ? <div className="mt-6 text-sm text-slate-600">{footer}</div> : null}
+          <p className="mt-8 text-xs text-slate-400" title="Identifies the code this tab is running">
+            build {typeof __APP_BUILD__ === 'string' ? __APP_BUILD__ : 'development'}
+          </p>
         </div>
       </div>
     </div>
